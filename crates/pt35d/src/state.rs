@@ -1193,6 +1193,15 @@ impl Session {
         if self.status.windows.iter().any(|w| w.focused) {
             return;
         }
+        // An app was just launched and has not mapped yet. Focusing some other
+        // window would switch to its workspace and hide the app as it appears.
+        // The new window takes focus itself when it maps.
+        if self
+            .launch_pending
+            .is_some_and(|at| at.elapsed() < LAUNCH_GRACE)
+        {
+            return;
+        }
         // Anything is better than nothing here, so this one does fall back to
         // the first window in the list. `current_window` must not: it decides
         // what gets closed.
