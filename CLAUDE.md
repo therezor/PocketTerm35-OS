@@ -182,9 +182,11 @@ window appears in front.
 - Corners are 2px. Squared, not rounded.
 - Motion is two things, each about 0.1s: the selection glides, a new screen
   settles. The draw loop runs at 60fps only while one is moving and sleeps
-  otherwise (`App::animating`). `[menu] animations = false` turns both off,
-  and GTK's `enable-animations` with them. Settings > Appearance has the
-  switch. Qt's GTK theme does not read that setting.
+  otherwise (`App::animating`). `[menu] animations` is a speed: 0 turns both
+  off, and GTK's `enable-animations` with them; 1 to 5 run slowest to
+  fastest, 3 the default (`theme::animation_spans`). `true` and `false` still
+  read as 3 and 0. Settings > Appearance > Animations has the ladder. Qt's
+  GTK theme does not read that setting.
 - Performance comes first. The menu is a new process per open, so nothing slow
   may run before its first frame. Measure it: `RUST_LOG=pt35_ui=debug
   pt35-menu` logs the first frame, about 27 ms on a Pi 5. An icon miss once
@@ -193,9 +195,11 @@ window appears in front.
   when it is first drawn.
 - Mint on charcoal, mono for readouts and sans for labels. Geometry and colour
   live in `config/pt35/theme.toml`. Do not hardcode either in a widget.
-  Settings > Appearance writes `~/.config/pt35/appearance.toml`, layered between
-  the shipped theme and the user's `theme.toml`. A palette sets every colour and
-  the wallpaper. GTK and Qt apps follow `[apps] color_scheme` through gsettings.
+  Settings > Appearance, Bar and Menu write `~/.config/pt35/appearance.toml`,
+  layered between the shipped theme and the user's `theme.toml`. A choice
+  with more than two values (palette, accent, clock, speed) has a screen of
+  its own, and its row reads out the value in use. A palette sets every
+  colour and the wallpaper. GTK and Qt apps follow `[apps] color_scheme` through gsettings.
 - Icons come from the installed Papirus theme (`pt35-ui`'s `icon.rs`), tinted
   from the symbolic set for status and full colour for apps. Nothing depends on
   it: every icon falls back to the `glyph` letter or a drawn meter.

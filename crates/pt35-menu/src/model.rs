@@ -249,8 +249,16 @@ impl Model {
     }
 
     fn leads_deeper(&self, source: &Source, index: usize) -> bool {
-        let Source::Page(id) = source else {
-            return false;
+        let id = match source {
+            // Only on screens of ours: a network could be called "screen:x".
+            Source::Dynamic { builtin, items } => {
+                return crate::providers::screen(*builtin).theme
+                    && items
+                        .get(index)
+                        .is_some_and(|item| item.payload.starts_with("screen:"));
+            }
+            Source::Page(id) => id,
+            Source::Confirm { .. } => return false,
         };
         let Some(page) = self.tree.page(id) else {
             return false;
@@ -730,15 +738,17 @@ impl Model {
                     }
                 }
                 // Only on screens of ours: a network could be called "sh:x".
-                Some(payload)
-                    if matches!(builtin, Builtin::Appearance | Builtin::Bluetooth)
-                        && (payload.starts_with("theme:") || payload.starts_with("sh:")) =>
-                {
-                    let (kind, rest) = payload.split_once(':').unwrap_or_default();
-                    Step::RunStay(match kind {
-                        "theme" => Command::Theme(rest.to_string()),
-                        _ => Command::Helper(rest.to_string()),
-                    })
+                Some(payload) if crate::providers::screen(builtin).theme => {
+                    match payload.split_once(':') {
+                        Some(("theme", pick)) => Step::RunStay(Command::Theme(pick.to_string())),
+                        Some(("screen", name)) => {
+                            Builtin::from_name(name).map_or(Step::Nothing, Step::Open)
+                        }
+                        _ => Step::Nothing,
+                    }
+                }
+                Some(payload) if builtin == Builtin::Bluetooth && payload.starts_with("sh:") => {
+                    Step::RunStay(Command::Helper(payload["sh:".len()..].to_string()))
                 }
                 Some(payload) => Step::Run(Command::Dynamic {
                     builtin,
@@ -1034,6 +1044,55 @@ entries = [
             Step::Run(Command::Dynamic {
                 builtin: Builtin::Windows,
                 payload: "con:34".into()
+            })
+        );
+    }
+
+    #[test]
+    fn a_settings_row_opens_its_screen_and_a_pick_stays() {
+        let mut model = model();
+        model.push_dynamic(
+            Builtin::Appearance,
+            "Appearance",
+            vec![
+                crate::providers::Item::new("Palette", "screen:palette"),
+                crate::providers::Item::new("Dark apps", "theme:apps.color_scheme=light"),
+            ],
+        );
+        assert!(
+            model.visible_rows()[0].submenu,
+            "a screen row has a chevron"
+        );
+        assert!(!model.visible_rows()[1].submenu);
+        assert_eq!(press(&mut model, sym::RETURN), Step::Open(Builtin::Palette));
+        model.push_dynamic(
+            Builtin::Palette,
+            "Palette",
+            vec![crate::providers::Item::new("Nord", "theme:palette=Nord")],
+        );
+        assert_eq!(
+            press(&mut model, sym::RETURN),
+            Step::RunStay(Command::Theme("palette=Nord".into()))
+        );
+    }
+
+    #[test]
+    fn a_network_named_like_a_setting_is_still_a_network() {
+        let mut model = model();
+        model.push_dynamic(
+            Builtin::Wifi,
+            "Network",
+            vec![crate::providers::Item::new(
+                "screen:palette",
+                "screen:palette",
+            )],
+        );
+        assert!(!model.visible_rows()[0].submenu);
+        assert_eq!(
+            press(&mut model, sym::RETURN),
+            Step::Run(Command::Dynamic {
+                builtin: Builtin::Wifi,
+                payload: "screen:palette".into()
             })
         );
     }

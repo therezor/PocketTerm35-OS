@@ -234,6 +234,9 @@ pub struct Menu {
     /// App profiles, for matching a launcher row to an open window.
     apps: pt35_common::apps::AppTable,
     motion: Motion,
+    /// Depth of the last theme pick. A settings screen under it reads out a
+    /// value the pick may have changed.
+    theme_picked_at: Option<usize>,
     /// The window last reported to pt35d as under the switcher's cursor.
     hover_sent: Option<i64>,
     /// Whether pt35d was last told the launcher is in front.
@@ -281,10 +284,12 @@ fn read_preview(id: i64) -> Option<Preview> {
 }
 
 /// The two movements the menu has: the selection gliding to its new row, and
-/// a new screen settling in from a few pixels down. Both are over in about a
-/// tenth of a second, and nothing is drawn for them once they are.
+/// a new screen settling in from a few pixels down. At the default speed both
+/// are over in about a tenth of a second, and nothing is drawn for them once
+/// they are.
 struct Motion {
-    enabled: bool,
+    /// How long the glide and the settle take. `None` is no motion.
+    spans: Option<(Duration, Duration)>,
     screen: (usize, String),
     entered: std::time::Instant,
     from: Option<i32>,
@@ -292,8 +297,6 @@ struct Motion {
     moved: std::time::Instant,
 }
 
-const GLIDE: Duration = Duration::from_millis(90);
-const ENTER: Duration = Duration::from_millis(120);
 /// How far a new screen rises as it settles.
 const ENTER_RISE: f32 = 12.0;
 
@@ -304,10 +307,10 @@ fn ease(elapsed: Duration, span: Duration) -> f32 {
 }
 
 impl Motion {
-    fn new(enabled: bool) -> Self {
+    fn new(speed: u8) -> Self {
         let long_ago = std::time::Instant::now() - Duration::from_secs(1);
         Self {
-            enabled,
+            spans: pt35_common::theme::animation_spans(speed),
             screen: (0, String::new()),
             entered: long_ago,
             from: None,
@@ -327,17 +330,21 @@ impl Motion {
         }
     }
 
+    fn set_speed(&mut self, speed: u8) {
+        self.spans = pt35_common::theme::animation_spans(speed);
+    }
+
     /// Pixels to push the body down while the screen settles.
     fn rise(&self) -> i32 {
-        if !self.enabled {
+        let Some((_, settle)) = self.spans else {
             return 0;
-        }
-        ((1.0 - ease(self.entered.elapsed(), ENTER)) * ENTER_RISE) as i32
+        };
+        ((1.0 - ease(self.entered.elapsed(), settle)) * ENTER_RISE) as i32
     }
 
     /// Where to draw the selection on its way to `target`.
     fn glide(&mut self, target: i32) -> i32 {
-        if !self.enabled {
+        if self.spans.is_none() {
             return target;
         }
         if self.to != Some(target) {
@@ -350,12 +357,15 @@ impl Motion {
 
     fn current(&self) -> Option<i32> {
         let (from, to) = (self.from?, self.to?);
-        let k = ease(self.moved.elapsed(), GLIDE);
+        let (glide, _) = self.spans?;
+        let k = ease(self.moved.elapsed(), glide);
         Some(from + ((to - from) as f32 * k) as i32)
     }
 
     fn busy(&self) -> bool {
-        self.enabled && (self.moved.elapsed() < GLIDE || self.entered.elapsed() < ENTER)
+        self.spans.is_some_and(|(glide, settle)| {
+            self.moved.elapsed() < glide || self.entered.elapsed() < settle
+        })
     }
 }
 
@@ -402,6 +412,7 @@ impl Menu {
             since_poll: 0,
             apps: pt35_common::load_config("pt35/apps.toml"),
             motion: Motion::new(theme_animations),
+            theme_picked_at: None,
             hover_sent: None,
             launcher_sent: None,
             scan_until: None,
@@ -682,6 +693,30 @@ impl Menu {
     }
 
     fn apply(&mut self, step: Step) -> bool {
+        let keep = self.apply_step(step);
+        self.reread_after_pick();
+        keep
+    }
+
+    /// Back from Palette, Appearance has to read out the palette you picked.
+    /// Only a settings screen is read again: the launcher's rows walk every
+    /// .desktop folder.
+    fn reread_after_pick(&mut self) {
+        let depth = self.model.depth();
+        if self.theme_picked_at.is_none_or(|picked| depth >= picked) {
+            return;
+        }
+        self.theme_picked_at = Some(depth);
+        if let Some(builtin) = self
+            .model
+            .dynamic_builtin()
+            .filter(|builtin| providers::screen(*builtin).theme)
+        {
+            self.model.replace_dynamic(providers::items(builtin));
+        }
+    }
+
+    fn apply_step(&mut self, step: Step) -> bool {
         self.error = None;
         match step {
             Step::Close(payload) => {
@@ -745,9 +780,10 @@ impl Menu {
                     self.scan_until = Some(std::time::Instant::now() + Duration::from_secs(13));
                 }
                 if matches!(command, crate::model::Command::Theme(_)) {
+                    self.theme_picked_at = Some(self.model.depth());
                     self.theme = pt35_common::load_theme();
-                    // So the Animations row takes effect on this menu too.
-                    self.motion.enabled = self.theme.menu.animations;
+                    // So a new speed takes effect on this menu too.
+                    self.motion.set_speed(self.theme.menu.animations);
                 }
                 // A shell payload is a detached script, so its effect lands after
                 // it has been spawned. Everything else went through the daemon,
@@ -1086,6 +1122,23 @@ impl Menu {
                     self.font.draw(canvas, text, tx, baseline, size_right, dim);
                 }
                 right_width = width + 10;
+            }
+            // A row that opens a setting's own screen reads out the value in
+            // use, left of its chevron.
+            if row.submenu && row.adjust.is_none() && row.state.is_none() && !row.note.is_empty() {
+                let size_note = theme.font.size_hint;
+                let width = self.mono.measure(&row.note, size_note) as i32;
+                let colour = if selected { fg } else { theme.color.accent };
+                right_width += width;
+                self.mono.draw(
+                    canvas,
+                    &row.note,
+                    canvas.width as i32 - pad - right_width,
+                    baseline,
+                    size_note,
+                    colour,
+                );
+                right_width += 10;
             }
             // A tick for the one row that is current, left of its readout.
             let current_cpu = self

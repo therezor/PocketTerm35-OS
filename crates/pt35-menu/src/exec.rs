@@ -74,6 +74,12 @@ fn dynamic(builtin: Builtin, payload: &str) -> Plan {
         | Builtin::Quick
         | Builtin::System
         | Builtin::Appearance
+        | Builtin::BarOptions
+        | Builtin::MenuOptions
+        | Builtin::Palette
+        | Builtin::Accent
+        | Builtin::Clock
+        | Builtin::Animations
         | Builtin::About => Plan::Nothing,
     }
 }

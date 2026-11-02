@@ -1719,13 +1719,14 @@ pub fn color_scheme_settings(
     ])
 }
 
-/// The menu's animations switch covers GTK apps too, so one setting means all
-/// motion. Left alone with `color_scheme = "keep"`, like the rest of GTK.
+/// The menu's animation speed covers GTK apps too, so one setting means all
+/// motion. GTK has no speed: any speed but 0 is on. Left alone with
+/// `color_scheme = "keep"`, like the rest of GTK.
 fn apply_animations(theme: &pt35_common::theme::Theme) {
     if theme.apps.color_scheme == pt35_common::theme::ColorScheme::Keep {
         return;
     }
-    let on = theme.menu.animations.to_string();
+    let on = (theme.menu.animations > 0).to_string();
     std::thread::spawn(move || {
         let status = Command::new("gsettings")
             .args([

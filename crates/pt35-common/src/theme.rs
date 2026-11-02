@@ -1,6 +1,7 @@
 //! Colours, fonts and sizes, tuned for a 640x480 panel.
 
 use serde::Deserialize;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -121,9 +122,11 @@ pub struct Menu {
     /// Every .desktop file on the machine in the launcher, or only the apps
     /// with a profile in apps.toml.
     pub show_desktop_entries: bool,
-    /// The selection glides and a new screen settles in, each for about a
-    /// tenth of a second. Off draws every change in one frame.
-    pub animations: bool,
+    /// How fast the selection glides and a new screen settles in, 1 slowest
+    /// to 5 fastest, 3 about a tenth of a second. 0 draws every change in one
+    /// frame. `true` and `false` from before the speeds still read.
+    #[serde(deserialize_with = "animation_speed")]
+    pub animations: u8,
     /// Typing on the launcher starts a search, no X first. Off for a unit on
     /// stock firmware, where the letters a b x y l r are also the buttons.
     pub type_to_search: bool,
@@ -144,6 +147,40 @@ pub struct Menu {
     /// Width of the list's scrollbar. It is a target too: a click on the
     /// track jumps there and a drag moves the list.
     pub scrollbar_width: u32,
+}
+
+pub const ANIMATIONS_DEFAULT: u8 = 3;
+pub const ANIMATIONS_MAX: u8 = 5;
+
+/// How long the selection's glide and a new screen's settle take at this
+/// speed. `None` is no motion.
+pub fn animation_spans(speed: u8) -> Option<(Duration, Duration)> {
+    let scale = match speed {
+        0 => return None,
+        1 => 2.0,
+        2 => 1.5,
+        3 => 1.0,
+        4 => 0.75,
+        _ => 0.5,
+    };
+    Some((
+        Duration::from_millis(90).mul_f32(scale),
+        Duration::from_millis(120).mul_f32(scale),
+    ))
+}
+
+fn animation_speed<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Speed {
+        Switch(bool),
+        Level(i64),
+    }
+    Ok(match Speed::deserialize(d)? {
+        Speed::Switch(true) => ANIMATIONS_DEFAULT,
+        Speed::Switch(false) => 0,
+        Speed::Level(n) => n.clamp(0, ANIMATIONS_MAX.into()) as u8,
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -351,7 +388,7 @@ impl Default for Menu {
             filter_hint: "type to search".into(),
             recents: 5,
             show_desktop_entries: true,
-            animations: true,
+            animations: ANIMATIONS_DEFAULT,
             type_to_search: true,
             window_previews: true,
             header_height: 46,
@@ -407,5 +444,20 @@ mod tests {
         assert_eq!(theme.color.accent, Rgb(0xff, 0, 0));
         assert_eq!(theme.color.background, Colors::default().background);
         assert_eq!(theme.bar.height, Bar::default().height);
+    }
+
+    #[test]
+    fn animations_read_as_a_switch_or_a_speed() {
+        let speed = |value: &str| {
+            toml::from_str::<Theme>(&format!("[menu]\nanimations = {value}\n"))
+                .unwrap()
+                .menu
+                .animations
+        };
+        assert_eq!(speed("false"), 0);
+        assert_eq!(speed("true"), ANIMATIONS_DEFAULT);
+        assert_eq!(speed("4"), 4);
+        assert_eq!(speed("9"), ANIMATIONS_MAX);
+        assert_eq!(Theme::default().menu.animations, ANIMATIONS_DEFAULT);
     }
 }

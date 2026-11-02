@@ -10,7 +10,8 @@
 #   action  = "<pt35ctl args>" ask pt35d to do something
 #   builtin = "<screen>"       a screen pt35-menu builds itself
 #                              (windows | wifi | bluetooth | audio | display |
-#                               desktop_entries | appearance | about)
+#                               desktop_entries | appearance | bar | menu |
+#                               palette | accent | clock | animations | about)
 #
 # Tiles also take `icon` (a freedesktop name from the installed theme),
 # `glyph` (1-2 characters, drawn when the theme has no such icon), `tint`
@@ -34,11 +35,13 @@ entries = [
   { label = "Network",      builtin = "wifi",   state = "network", icon = "network-wireless" },
   { label = "Bluetooth",    builtin = "bluetooth", icon = "bluetooth" },
   { label = "Appearance",   builtin = "appearance", icon = "preferences-desktop-appearance" },
-  { label = "System",       builtin = "system", icon = "utilities-system-monitor" },
+  { label = "Bar",          builtin = "bar", icon = "focus-top-bar" },
+  { label = "Menu",         builtin = "menu", icon = "application-menu" },
   { label = "CPU profile",  goto = "cpu", icon = "cpu" },
+  { label = "System",       builtin = "system", icon = "utilities-system-monitor" },
+  { label = "About",        builtin = "about", icon = "help-about" },
   { label = "Screenshot",   action = "screenshot", icon = "camera-photo" },
   { label = "Reload shell", action = "reload", icon = "view-refresh" },
-  { label = "About",        builtin = "about", icon = "help-about" },
 ]
 
 [menu.cpu]

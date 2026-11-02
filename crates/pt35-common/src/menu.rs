@@ -121,8 +121,19 @@ pub enum Builtin {
     Audio,
     Display,
     DesktopEntries,
-    /// Accent colour and clock, written to `appearance.toml`.
+    /// Colours and motion, written to `appearance.toml` like the two below.
     Appearance,
+    /// The top bar's clock and marks.
+    #[serde(rename = "bar")]
+    BarOptions,
+    /// How the menu and the launcher behave.
+    #[serde(rename = "menu")]
+    MenuOptions,
+    /// The settings with more than two values, one screen each.
+    Palette,
+    Accent,
+    Clock,
+    Animations,
     About,
 }
 
@@ -130,20 +141,51 @@ impl Builtin {
     /// `pt35ctl menu open windows` names a screen, and a builtin is a screen
     /// even though it is not a page in this file.
     pub fn from_name(name: &str) -> Option<Self> {
-        Some(match name {
-            "launcher" => Builtin::Launcher,
-            "quick" => Builtin::Quick,
-            "system" => Builtin::System,
-            "windows" => Builtin::Windows,
-            "wifi" => Builtin::Wifi,
-            "bluetooth" => Builtin::Bluetooth,
-            "audio" => Builtin::Audio,
-            "display" => Builtin::Display,
-            "desktop_entries" => Builtin::DesktopEntries,
-            "appearance" => Builtin::Appearance,
-            "about" => Builtin::About,
-            _ => return None,
-        })
+        Self::ALL.into_iter().find(|builtin| builtin.name() == name)
+    }
+
+    /// Every screen, for `from_name`. A new one goes here and in `name`.
+    pub const ALL: [Builtin; 17] = [
+        Builtin::Launcher,
+        Builtin::Quick,
+        Builtin::System,
+        Builtin::Windows,
+        Builtin::Wifi,
+        Builtin::Bluetooth,
+        Builtin::Audio,
+        Builtin::Display,
+        Builtin::DesktopEntries,
+        Builtin::Appearance,
+        Builtin::BarOptions,
+        Builtin::MenuOptions,
+        Builtin::Palette,
+        Builtin::Accent,
+        Builtin::Clock,
+        Builtin::Animations,
+        Builtin::About,
+    ];
+
+    /// The name menu.toml, `pt35ctl menu open` and a `screen:` row use.
+    pub fn name(self) -> &'static str {
+        match self {
+            Builtin::Launcher => "launcher",
+            Builtin::Quick => "quick",
+            Builtin::System => "system",
+            Builtin::Windows => "windows",
+            Builtin::Wifi => "wifi",
+            Builtin::Bluetooth => "bluetooth",
+            Builtin::Audio => "audio",
+            Builtin::Display => "display",
+            Builtin::DesktopEntries => "desktop_entries",
+            Builtin::Appearance => "appearance",
+            Builtin::BarOptions => "bar",
+            Builtin::MenuOptions => "menu",
+            Builtin::Palette => "palette",
+            Builtin::Accent => "accent",
+            Builtin::Clock => "clock",
+            Builtin::Animations => "animations",
+            Builtin::About => "about",
+        }
     }
 }
 
@@ -291,6 +333,23 @@ entries = [ { label = "Terminal", app = "terminal" } ]
             tree.validate(),
             Err(TreeError::Entry(EntryError::Ambiguous(..)))
         ));
+    }
+
+    #[test]
+    fn every_screen_is_found_by_its_name() {
+        #[derive(Deserialize)]
+        struct Row {
+            builtin: Builtin,
+        }
+        for builtin in Builtin::ALL {
+            assert_eq!(Builtin::from_name(builtin.name()), Some(builtin));
+            let row: Row = toml::from_str(&format!("builtin = {:?}", builtin.name())).unwrap();
+            assert_eq!(row.builtin, builtin, "menu.toml reads the same name");
+        }
+        let mut names: Vec<&str> = Builtin::ALL.iter().map(|b| b.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), Builtin::ALL.len());
     }
 
     #[test]

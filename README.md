@@ -218,7 +218,8 @@ Defaults live in `/usr/share/pt35-desktop/pt35/`. Put your own copy in
 | `theme.toml` | colours, fonts, sizes, icons |
 | `hooks/hook_*` | scripts run at startup, app launch, shutdown |
 
-Settings > Appearance writes `~/.config/pt35/appearance.toml` for you.
+Settings > Appearance, Bar and Menu write `~/.config/pt35/appearance.toml`
+for you.
 
 An app that is too big for 640x480 gets `scale = 0.75` in `apps.toml`. The app
 draws smaller. The desktop does not.

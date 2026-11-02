@@ -29,6 +29,17 @@
   drawn. Text looks the same.
 - When the terminal on workspace 1 closes, pt35d moves the oldest remaining
   terminal to 1, so Super + 1 still finds one.
+- Settings is grouped. Appearance holds the palette, the accent, dark apps
+  and animations. The new Bar screen holds the clock, the mode readout and
+  the skull button. The new Menu screen holds row numbers, window previews
+  and .desktop apps. Palette, Accent, Clock and Animations each open a
+  screen of their own, and their row reads out the value in use. Appearance
+  was one list of 20 rows. A `[menu.settings]` of your own in
+  `~/.config/pt35/menu.toml` needs `{ builtin = "bar" }` and
+  `{ builtin = "menu" }` rows to reach the settings that moved.
+- Animations has a speed: Off, then 1 (slowest) to 5 (fastest). 3 is the
+  old timing. `animations = true` and `false` in a theme file still work,
+  as 3 and Off.
 
 ## 0.4.3 (2026-11-02)
 

@@ -55,6 +55,9 @@ pub struct Screen {
     pub rows: fn() -> Items,
     /// Rows you read, not press. No cursor, no numbers, no A in the legend.
     pub readonly: bool,
+    /// Rows read from the theme, and picks that write it. A pick stays on the
+    /// screen, and the rows are read again when you come back after one.
+    pub theme: bool,
 }
 
 pub fn screen(builtin: Builtin) -> Screen {
@@ -75,6 +78,12 @@ pub fn screen(builtin: Builtin) -> Screen {
         Builtin::Display => ("Brightness", Layout::List, None, brightness_levels),
         Builtin::DesktopEntries => ("All apps", Layout::List, None, desktop_entries),
         Builtin::Appearance => ("Appearance", Layout::List, None, appearance),
+        Builtin::BarOptions => ("Bar", Layout::List, None, bar_options),
+        Builtin::MenuOptions => ("Menu", Layout::List, None, menu_options),
+        Builtin::Palette => ("Palette", Layout::List, None, palettes),
+        Builtin::Accent => ("Accent", Layout::List, None, accents),
+        Builtin::Clock => ("Clock", Layout::List, None, clocks),
+        Builtin::Animations => ("Animations", Layout::List, None, animation_speeds),
         Builtin::About => ("About", Layout::List, None, about),
     };
     Screen {
@@ -83,6 +92,16 @@ pub fn screen(builtin: Builtin) -> Screen {
         scanning,
         rows,
         readonly: matches!(builtin, Builtin::System | Builtin::About),
+        theme: matches!(
+            builtin,
+            Builtin::Appearance
+                | Builtin::BarOptions
+                | Builtin::MenuOptions
+                | Builtin::Palette
+                | Builtin::Accent
+                | Builtin::Clock
+                | Builtin::Animations
+        ),
     }
 }
 
@@ -1227,108 +1246,212 @@ const CLOCKS: &[(&str, &str, &str)] = &[
     ("Clock with day", "%a %H:%M", "Tue 14:05"),
 ];
 
-/// One row per choice, the current one marked. A picks it and the screen
-/// stays, so the change is seen on the rows themselves.
+/// Animation speeds, 0 to 5, by name. No digits in them: the row numbers
+/// would read as the speed.
+const SPEEDS: [&str; 6] = ["Off", "Slowest", "Slow", "Normal", "Fast", "Fastest"];
+
+/// Colours and motion. A choice with more than two values has a screen of its
+/// own, and its row here reads out the one in use.
 fn appearance() -> Items {
     let theme = pt35_common::load_theme();
     let dark = theme.apps.color_scheme != pt35_common::theme::ColorScheme::Light;
-    let background = theme.color.background.to_string();
-    let mut out: Items = PALETTES
-        .iter()
-        .map(|(name, colours)| {
-            let get = |key: &str| colours.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
-            Item {
-                label: format!("{name} palette"),
-                payload: format!("theme:palette={name}"),
-                active: get("background") == Some(background.as_str()),
-                // Five of these are near-black: the accent is what tells them apart.
-                tint: get("accent").and_then(|hex| hex.parse().ok()),
-                note: String::new(),
-                ..Item::default()
-            }
-        })
-        .collect();
-    out.extend(ACCENTS.iter().map(|(name, hex)| {
-        let tint: Option<Rgb> = hex.parse().ok();
+    vec![
+        nav(
+            "Palette",
+            Builtin::Palette,
+            palette_in_use(&theme).unwrap_or("custom"),
+            "preferences-desktop-color",
+        ),
         Item {
-            label: format!("{name} accent"),
-            payload: format!("theme:color.accent={hex}"),
-            active: tint == Some(theme.color.accent),
-            tint,
-            ..Item::default()
-        }
-    }));
-    out.extend(CLOCKS.iter().map(|(label, format, example)| Item {
-        label: (*label).into(),
-        payload: format!("theme:bar.clock_format={format}"),
-        note: (*example).into(),
-        icon: "preferences-system-time".into(),
-        active: theme.bar.clock_format == *format,
-        ..Item::default()
-    }));
-    out.push(Item {
-        label: "Dark apps".into(),
-        payload: format!(
-            "theme:apps.color_scheme={}",
-            if dark { "light" } else { "dark" }
+            tint: Some(theme.color.accent),
+            ..nav("Accent", Builtin::Accent, &accent_in_use(&theme), "")
+        },
+        switch_row(
+            "Dark apps",
+            &format!("apps.color_scheme={}", if dark { "light" } else { "dark" }),
+            dark,
+            "weather-clear-night",
         ),
-        note: if dark { "on" } else { "off" }.into(),
-        icon: "weather-clear-night".into(),
-        ..Item::default()
-    });
-    let previews = theme.menu.window_previews;
-    out.push(Item {
-        label: "Window previews".into(),
-        payload: format!("theme:menu.window_previews={}", !previews),
-        note: if previews { "on" } else { "off" }.into(),
-        icon: "preferences-system-windows".into(),
-        ..Item::default()
-    });
+        nav(
+            "Animations",
+            Builtin::Animations,
+            SPEEDS[usize::from(theme.menu.animations).min(SPEEDS.len() - 1)],
+            "desktop-effects",
+        ),
+    ]
+}
+
+/// The top bar.
+fn bar_options() -> Items {
+    let theme = pt35_common::load_theme();
     let skull = theme.bar.menu_icon != "bars";
-    out.push(Item {
-        label: "Skull menu button".into(),
-        payload: format!(
-            "theme:bar.menu_icon={}",
-            if skull { "bars" } else { "skull" }
+    vec![
+        nav(
+            "Clock",
+            Builtin::Clock,
+            CLOCKS
+                .iter()
+                .find(|(_, format, _)| theme.bar.clock_format == *format)
+                .map_or("custom", |(_, _, example)| example),
+            "preferences-system-time",
         ),
-        note: if skull { "on" } else { "off" }.into(),
-        icon: "view-app-grid".into(),
-        ..Item::default()
-    });
-    let toggles = [
-        (
-            "Row numbers",
-            "menu.show_numbers",
-            theme.menu.show_numbers,
-            "view-list-ordered",
-        ),
-        (
+        switch_row(
             "Mode in bar",
-            "bar.show_mode",
+            &format!("bar.show_mode={}", !theme.bar.show_mode),
             theme.bar.show_mode,
             "input-keyboard",
         ),
-        (
-            "Animations",
-            "menu.animations",
-            theme.menu.animations,
-            "desktop-effects",
+        switch_row(
+            "Skull menu button",
+            &format!("bar.menu_icon={}", if skull { "bars" } else { "skull" }),
+            skull,
+            "view-app-grid",
         ),
-        (
+    ]
+}
+
+/// The menu, the launcher and the switcher.
+fn menu_options() -> Items {
+    let menu = pt35_common::load_theme().menu;
+    vec![
+        switch_row(
+            "Row numbers",
+            &format!("menu.show_numbers={}", !menu.show_numbers),
+            menu.show_numbers,
+            "view-list-ordered",
+        ),
+        switch_row(
+            "Window previews",
+            &format!("menu.window_previews={}", !menu.window_previews),
+            menu.window_previews,
+            "preferences-system-windows",
+        ),
+        switch_row(
             "All .desktop apps",
-            "menu.show_desktop_entries",
-            theme.menu.show_desktop_entries,
+            &format!("menu.show_desktop_entries={}", !menu.show_desktop_entries),
+            menu.show_desktop_entries,
             "applications-all",
         ),
-    ];
-    out.extend(toggles.into_iter().map(|(label, key, on, icon)| Item {
+    ]
+}
+
+/// A row that opens one of the settings screens, with the value in use.
+fn nav(label: &str, screen: Builtin, value: &str, icon: &str) -> Item {
+    Item {
         label: label.into(),
-        payload: format!("theme:{key}={}", !on),
+        payload: format!("screen:{}", screen.name()),
+        note: value.into(),
+        icon: icon.into(),
+        ..Item::default()
+    }
+}
+
+/// An on/off setting. `pick` is what A writes: the other value.
+fn switch_row(label: &str, pick: &str, on: bool, icon: &str) -> Item {
+    Item {
+        label: label.into(),
+        payload: format!("theme:{pick}"),
         note: if on { "on" } else { "off" }.into(),
         icon: icon.into(),
         ..Item::default()
-    }));
-    out
+    }
+}
+
+/// The accent's name: one of ours, else the palette it came with, else its hex.
+fn accent_in_use(theme: &pt35_common::theme::Theme) -> String {
+    let accent = theme.color.accent.to_string();
+    ACCENTS
+        .iter()
+        .find(|(_, hex)| *hex == accent)
+        .map(|(name, _)| *name)
+        .or_else(|| {
+            PALETTES
+                .iter()
+                .find(|(_, colours)| colours.contains(&("accent", accent.as_str())))
+                .map(|(name, _)| *name)
+        })
+        .map_or(accent.clone(), str::to_string)
+}
+
+/// The palette whose background is the one in use. Each has its own.
+fn palette_in_use(theme: &pt35_common::theme::Theme) -> Option<&'static str> {
+    let background = theme.color.background.to_string();
+    PALETTES
+        .iter()
+        .find(|(_, colours)| colours.contains(&("background", background.as_str())))
+        .map(|(name, _)| *name)
+}
+
+/// One row per choice, the current one marked. A picks it and the screen
+/// stays, so the change is seen on the rows themselves.
+fn palettes() -> Items {
+    let theme = pt35_common::load_theme();
+    let in_use = palette_in_use(&theme);
+    PALETTES
+        .iter()
+        .map(|(name, colours)| Item {
+            label: (*name).into(),
+            payload: format!("theme:palette={name}"),
+            active: in_use == Some(*name),
+            // Five of these are near-black: the accent is what tells them apart.
+            tint: colours
+                .iter()
+                .find(|(key, _)| *key == "accent")
+                .and_then(|(_, hex)| hex.parse().ok()),
+            ..Item::default()
+        })
+        .collect()
+}
+
+fn accents() -> Items {
+    let accent = pt35_common::load_theme().color.accent;
+    ACCENTS
+        .iter()
+        .map(|(name, hex)| {
+            let tint: Option<Rgb> = hex.parse().ok();
+            Item {
+                label: (*name).into(),
+                payload: format!("theme:color.accent={hex}"),
+                active: tint == Some(accent),
+                tint,
+                ..Item::default()
+            }
+        })
+        .collect()
+}
+
+fn clocks() -> Items {
+    let format_in_use = pt35_common::load_theme().bar.clock_format;
+    CLOCKS
+        .iter()
+        .map(|(label, format, example)| Item {
+            label: (*label).into(),
+            payload: format!("theme:bar.clock_format={format}"),
+            note: (*example).into(),
+            icon: "preferences-system-time".into(),
+            active: format_in_use == *format,
+            ..Item::default()
+        })
+        .collect()
+}
+
+/// Off, then slowest to fastest. The note is how long a new screen takes
+/// to settle.
+fn animation_speeds() -> Items {
+    let speed = pt35_common::load_theme().menu.animations;
+    (0..)
+        .zip(SPEEDS)
+        .map(|(level, name)| Item {
+            label: name.into(),
+            payload: format!("theme:menu.animations={level}"),
+            note: pt35_common::theme::animation_spans(level)
+                .map(|(_, settle)| format!("{} ms", settle.as_millis()))
+                .unwrap_or_default(),
+            icon: "desktop-effects".into(),
+            active: level == speed,
+            ..Item::default()
+        })
+        .collect()
 }
 
 /// `section.key=value` from an Appearance row, typed the way the theme wants it.
@@ -1548,16 +1671,55 @@ mod provider_tests {
         for (_, hex) in ACCENTS {
             assert!(hex.parse::<Rgb>().is_ok(), "{hex}");
         }
-        for item in appearance() {
-            let pick = item.payload.strip_prefix("theme:").unwrap();
-            let (section, entries, _) = crate::exec::picks(pick).unwrap();
-            let mut table = toml::Table::new();
-            let inner: toml::Table = entries.into_iter().collect();
-            table.insert(section.into(), toml::Value::Table(inner));
-            toml::Value::Table(table)
-                .try_into::<pt35_common::theme::Theme>()
-                .unwrap_or_else(|e| panic!("{pick}: {e}"));
+        let settings: Vec<Builtin> = Builtin::ALL
+            .into_iter()
+            .filter(|builtin| screen(*builtin).theme)
+            .collect();
+        assert_eq!(settings.len(), 7);
+        for builtin in settings {
+            let rows = items(builtin);
+            assert!(!rows.is_empty(), "{builtin:?}");
+            for item in rows {
+                if let Some(name) = item.payload.strip_prefix("screen:") {
+                    let opens = Builtin::from_name(name).expect(name);
+                    assert!(screen(opens).theme, "{name} is a settings screen");
+                    assert!(!item.note.is_empty(), "{} reads out its value", item.label);
+                    continue;
+                }
+                let pick = item.payload.strip_prefix("theme:").unwrap();
+                let (section, entries, _) = crate::exec::picks(pick).unwrap();
+                let mut table = toml::Table::new();
+                let inner: toml::Table = entries.into_iter().collect();
+                table.insert(section.into(), toml::Value::Table(inner));
+                toml::Value::Table(table)
+                    .try_into::<pt35_common::theme::Theme>()
+                    .unwrap_or_else(|e| panic!("{pick}: {e}"));
+            }
         }
+    }
+
+    #[test]
+    fn an_accent_is_named_by_its_own_name_or_its_palette() {
+        let mut theme = pt35_common::theme::Theme::default();
+        assert_eq!(accent_in_use(&theme), "Mint");
+        theme.color.accent = "#88c0d0".parse().unwrap();
+        assert_eq!(accent_in_use(&theme), "Nord");
+        theme.color.accent = "#123456".parse().unwrap();
+        assert_eq!(accent_in_use(&theme), "#123456");
+    }
+
+    #[test]
+    fn every_speed_is_one_row_and_off_has_no_time() {
+        let rows = animation_speeds();
+        assert_eq!(
+            rows.len(),
+            usize::from(pt35_common::theme::ANIMATIONS_MAX) + 1
+        );
+        assert_eq!(rows[0].payload, "theme:menu.animations=0");
+        assert_eq!(rows[0].note, "");
+        assert_eq!(rows[3].note, "120 ms", "3 is the speed the shell had");
+        assert_eq!(rows[5].payload, "theme:menu.animations=5");
+        assert!(rows.iter().all(|row| !row.label.contains(char::is_numeric)));
     }
 
     #[test]
