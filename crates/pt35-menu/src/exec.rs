@@ -150,8 +150,11 @@ pub fn perform(command: &Command) -> Result<(), String> {
             pt35_common::set_appearance(section, &entries, replace).map_err(|e| e.to_string())?;
             // The bar watches the file. The daemon needs telling about [apps],
             // which it hands to gsettings, a palette, whose background is also
-            // the wallpaper, and previews, which it captures.
-            let daemon_reads = entries.iter().any(|(key, _)| *key == "window_previews");
+            // the wallpaper, previews, which it captures, and animations, which
+            // GTK apps get too.
+            let daemon_reads = entries
+                .iter()
+                .any(|(key, _)| matches!(*key, "window_previews" | "animations"));
             if section == "apps" || replace || daemon_reads {
                 let _ = crate::live::request(&pt35_common::ipc::Request::Reload);
             }

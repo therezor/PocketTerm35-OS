@@ -1309,6 +1309,12 @@ fn appearance() -> Items {
             "input-keyboard",
         ),
         (
+            "Animations",
+            "menu.animations",
+            theme.menu.animations,
+            "desktop-effects",
+        ),
+        (
             "All .desktop apps",
             "menu.show_desktop_entries",
             theme.menu.show_desktop_entries,

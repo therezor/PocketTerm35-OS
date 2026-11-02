@@ -746,6 +746,8 @@ impl Menu {
                 }
                 if matches!(command, crate::model::Command::Theme(_)) {
                     self.theme = pt35_common::load_theme();
+                    // So the Animations row takes effect on this menu too.
+                    self.motion.enabled = self.theme.menu.animations;
                 }
                 // A shell payload is a detached script, so its effect lands after
                 // it has been spawned. Everything else went through the daemon,

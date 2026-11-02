@@ -160,6 +160,7 @@ impl Session {
         session.status.cpu_profile = crate::hardware::current_cpu_profile();
         session.apply_wallpaper();
         apply_color_scheme(&session.theme);
+        apply_animations(&session.theme);
         apply_cursor(&session.theme.pointer);
         session.kill_stray_menu();
         session
@@ -937,6 +938,7 @@ impl Session {
                 self.apply_assignments();
                 self.apply_wallpaper();
                 apply_color_scheme(&self.theme);
+                apply_animations(&self.theme);
                 apply_cursor(&self.theme.pointer);
                 hooks::fire("reload", &[]);
                 self.notify("Config reloaded", 0);
@@ -1698,6 +1700,31 @@ pub fn color_scheme_settings(
         ("color-scheme", scheme.to_string()),
         ("gtk-theme", gtk.clone()),
     ])
+}
+
+/// The menu's animations switch covers GTK apps too, so one setting means all
+/// motion. Left alone with `color_scheme = "keep"`, like the rest of GTK.
+fn apply_animations(theme: &pt35_common::theme::Theme) {
+    if theme.apps.color_scheme == pt35_common::theme::ColorScheme::Keep {
+        return;
+    }
+    let on = theme.menu.animations.to_string();
+    std::thread::spawn(move || {
+        let status = Command::new("gsettings")
+            .args([
+                "set",
+                "org.gnome.desktop.interface",
+                "enable-animations",
+                &on,
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if !matches!(status, Ok(s) if s.success()) {
+            log::warn!("gsettings set enable-animations {on} failed");
+        }
+    });
 }
 
 /// GTK draws its own cursor over its windows, so it is told too.
