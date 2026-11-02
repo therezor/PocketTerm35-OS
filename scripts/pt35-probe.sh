@@ -71,7 +71,7 @@ note 'Wanted: is the 2W speaker HDMI audio through the panel board, a separate D
 
 say 'Package availability (Trixie)'
 for p in sway swaybg xwayland foot seatd greetd keyd pipewire wireplumber xdg-desktop-portal-wlr wl-clipboard grim slurp i2c-tools evtest libinput-tools helix yazi bottom bluetuith imv zathura mpv warpd ydotool; do
-  printf -- '- `%s`: %s\n' "$p" "$(apt-cache policy "$p" 2>/dev/null | sed -n 's/^  Candidate: //p' | head -n1 || echo '(none)')"
+  printf -- '- `%s`: %s\n' "$p" "$(LC_ALL=C apt-cache policy "$p" 2>/dev/null | sed -n 's/^  Candidate: //p' | head -n1 || echo '(none)')"
 done
 printf '\n'
 note 'sway MUST show an +rpt version (Raspberry Pi rebuild against their patched libwlroots-0.18) or it will not start.'

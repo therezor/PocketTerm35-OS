@@ -22,6 +22,10 @@
   close with its menu open, so the window came back after 3 seconds (#3).
 - A reload that fails keeps the config that was running. pt35d used to keep
   the tables it had just rejected, half applied (#7).
+- The installer works on a system set to another language. It read the
+  English "Candidate:" line from `apt-cache policy`, so on a German system it
+  found no sway and stopped with "no 'sway' package available". It now asks
+  apt for English (#1).
 
 ## 0.4.2 (2026-10-21)
 

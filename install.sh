@@ -114,7 +114,8 @@ check_platform() {
 check_sway_build() {
   run "DEBIAN_FRONTEND=noninteractive apt-get update -qq"
   local candidate
-  candidate=$(apt-cache policy sway 2>/dev/null | sed -n 's/^  Candidate: //p')
+  # The label is translated: German apt says "Installationskandidat:".
+  candidate=$(LC_ALL=C apt-cache policy sway 2>/dev/null | sed -n 's/^  Candidate: //p')
   [ -n "$candidate" ] && [ "$candidate" != "(none)" ] || die "no 'sway' package available"
   case "$candidate" in
     *rpt*) msg "sway candidate $candidate (Raspberry Pi build)" ;;
