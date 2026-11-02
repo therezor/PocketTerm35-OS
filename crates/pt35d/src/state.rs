@@ -1094,6 +1094,11 @@ impl Session {
         let current = self.current_window().map(|w| w.id) == Some(id);
         let next =
             next_window(&self.status.windows, self.status.workspace, true).filter(|_| current);
+        // A GTK app ignores a close while its menu bar is open, and Y opens it.
+        // Only the focused window can have a menu open.
+        if self.status.windows.iter().any(|w| w.id == id && w.focused) {
+            self.close_popups();
+        }
         self.sway_command(&format!("[con_id={id}] kill"))?;
         self.status.windows.retain(|w| w.id != id);
         self.closing.push((id, std::time::Instant::now()));
