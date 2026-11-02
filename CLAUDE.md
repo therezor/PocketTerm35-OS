@@ -176,7 +176,9 @@ window appears in front.
 - Corners are 2px. Squared, not rounded.
 - Motion is two things, each about 0.1s: the selection glides, a new screen
   settles. The draw loop runs at 60fps only while one is moving and sleeps
-  otherwise (`App::animating`). `[menu] animations = false` turns both off.
+  otherwise (`App::animating`). `[menu] animations = false` turns both off,
+  and GTK's `enable-animations` with them. Settings > Appearance has the
+  switch. Qt's GTK theme does not read that setting.
 - Performance comes first. The menu is a new process per open, so nothing slow
   may run before its first frame: measure it (about 75ms on a Pi 5). An icon
   miss once walked every theme folder and cost 3.5s.

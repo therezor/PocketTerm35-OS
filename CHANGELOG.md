@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- An Animations switch in Settings > Appearance. It turns off the menu's
+  motion at once, and GTK apps follow it too. Qt apps do not: Qt's GTK theme
+  does not read the setting (#4).
+
+### Changed
+
+- The hint bar's D-pad pills show arrows, not `<>` and `^v`. On a keyboard
+  with `<` and `>` keys, `<>` read as those keys (#5).
+
+### Fixed
+
+- An app with a workspace of its own, opened from the launcher, stays in
+  front. Focus used to go back to the window you came from while the app
+  started, so it opened out of sight (#2).
+- Closing a window works while its menu bar is open. A GTK app ignored the
+  close with its menu open, so the window came back after 3 seconds (#3).
+- A reload that fails keeps the config that was running. pt35d used to keep
+  the tables it had just rejected, half applied (#7).
+
 ## 0.4.2 (2026-10-21)
 
 After upgrading, reflash the keyboard with `sudo pt35-kbd flash`.
