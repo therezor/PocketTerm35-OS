@@ -925,11 +925,15 @@ impl Session {
             }
 
             Request::Reload => {
+                // Check the new files before taking them, so a reload that
+                // fails leaves the running config as it was.
+                let menu: MenuTree = load_or_default("pt35/menu.toml");
+                let apps: AppTable = load_or_default("pt35/apps.toml");
+                menu.validate()?;
+                apps.validate()?;
                 self.theme = load_theme_or_default();
-                self.menu = load_or_default("pt35/menu.toml");
-                self.apps = load_or_default("pt35/apps.toml");
-                self.menu.validate()?;
-                self.apps.validate()?;
+                self.menu = menu;
+                self.apps = apps;
                 self.apply_assignments();
                 self.apply_wallpaper();
                 apply_color_scheme(&self.theme);
