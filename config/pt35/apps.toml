@@ -56,7 +56,7 @@ match     = { app_id = "pt35-monitor" }
 workspace = 4
 
 # What is filling the disk, sorted, in a terminal. No workspace of its own:
-# it opens on the first free one.
+# it opens on the first free one no app owns, 10 and up.
 [app.disk]
 label     = "Disk usage"
 glyph     = "D"

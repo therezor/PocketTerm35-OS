@@ -90,8 +90,10 @@ taskbar for a couple of seconds: "Saved shot.png", "no audio".
 | Fn + Select | screenshot |
 | power button | power menu; press again to close it |
 
-There is no tiling. One window owns the screen, and each app gets a workspace
-of its own.
+There is no tiling. One window owns the screen, and each window gets a
+workspace of its own. An app with a workspace in `apps.toml` is always on it,
+so Super + its number finds it. Everything else, a second terminal included,
+goes to 10 and up: Super + Tab, the dock or the switcher reach those.
 
 ## Keyboard firmware
 

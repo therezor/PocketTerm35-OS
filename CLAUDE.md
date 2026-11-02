@@ -152,10 +152,16 @@ window appears in front.
 
 640x480 leaves no room for chrome that is not earning its place.
 
-- No tiling. One window owns the screen; pt35d moves a second window on a
-  workspace to a free one. Not sway `fullscreen`, which would hide the bar.
-  Dialogs float over their app and are never moved. A portal's file chooser
-  has no parent sway can see, so it is floated by name in the sway config.
+- No tiling. One window owns the screen. Not sway `fullscreen`, which would
+  hide the bar. A profile with `workspace = N` owns N, and the app's oldest
+  window lives there. Every other window is a guest (a second terminal, an
+  app with no workspace, a .desktop app) and lives on a free workspace no
+  profile owns: 10 and up with the shipped profiles. A guest never sits on an
+  owned workspace, even while its app is closed, so an owner never pushes
+  anything out. `pt35d`'s `placement.rs` is that whole policy, run on every
+  tree change, so any layout converges on it. Dialogs float over their app
+  and move only with it. A portal's file chooser has no parent sway can see,
+  so it is floated by name in the sway config.
 - The bar rises to the overlay layer while the menu is up
   (`App::raised`): sway hides the top layer under a fullscreen window. It
   moves only with no button or finger down: sway 1.10 segfaults when a surface
@@ -191,7 +197,10 @@ window appears in front.
   from the symbolic set for status and full colour for apps. Nothing depends on
   it: every icon falls back to the `glyph` letter or a drawn meter.
 - An app profile's workspace is applied with a sway `assign` rule at startup, not
-  by switching workspace before spawning: that is a race a slow app loses.
+  by switching workspace before spawning: that is a race a slow app loses. A
+  launch still goes to `launch_target` first so the app opens in front, but
+  the assign and `placement.rs` decide where the window lands. A bare command
+  goes nowhere first: it may make no window at all.
 - The output stays at scale 1. A profile's `scale` goes to the app as
   `GDK_DPI_SCALE` / `QT_SCALE_FACTOR`, so the shell never shrinks with it.
 

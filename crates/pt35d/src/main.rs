@@ -15,6 +15,7 @@ mod events;
 mod hardware;
 mod hooks;
 mod modes;
+mod placement;
 mod recents;
 mod server;
 mod state;

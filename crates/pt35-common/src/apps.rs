@@ -22,7 +22,10 @@ pub struct AppProfile {
     /// (`match` is a keyword, so the field is `match_` with a serde rename.)
     #[serde(rename = "match")]
     pub match_: Match,
-    /// Workspace the app owns. 0 = next free.
+    /// Workspace the app owns, 1 to 9, where Super and the number reach it.
+    /// Its oldest window lives there. 0: the app owns none, and its windows go
+    /// to a free workspace no app owns, as every second copy does. Needs an
+    /// `app_id` or `class` in `match` (see `owned_workspace`).
     pub workspace: u8,
     /// One or two characters for the dock and the window picker, used when the
     /// icon theme has nothing for `icon`.
@@ -76,13 +79,18 @@ impl AppProfile {
     /// One criteria string per identifier. A Wayland build reports `app_id` and
     /// an X11 build reports `class`, so a profile that lists both needs two
     /// rules, not one rule that matches neither.
+    ///
+    /// sway reads a criteria value as a regular expression that may match
+    /// part of the name, in one case only: `app_id="foot"` also takes
+    /// `footclient`. These match the whole name in any case, as `matches_app`
+    /// does, so an assign puts a window only where placement expects it.
     pub fn sway_criteria_list(&self) -> Vec<String> {
         let mut out = Vec::new();
         if let Some(v) = &self.match_.app_id {
-            out.push(format!("[app_id=\"{v}\"]"));
+            out.push(format!("[app_id=\"{}\"]", whole_name(v)));
         }
         if let Some(v) = &self.match_.class {
-            out.push(format!("[class=\"{v}\"]"));
+            out.push(format!("[class=\"{}\"]", whole_name(v)));
         }
         if out.is_empty() {
             if let Some(v) = &self.match_.title {
@@ -90,6 +98,15 @@ impl AppProfile {
             }
         }
         out
+    }
+
+    /// The workspace this app owns, if any. Only a profile matched by app id
+    /// or class owns one: a title changes while the app runs, and sway reads
+    /// it once, when the window appears, so the shell could not keep the
+    /// window there.
+    pub fn owned_workspace(&self) -> Option<u8> {
+        let known = self.match_.app_id.is_some() || self.match_.class.is_some();
+        (self.workspace > 0 && known).then_some(self.workspace)
     }
 
     /// True when an open window belongs to this profile. `app` is what sway
@@ -152,8 +169,28 @@ impl AppProfile {
         if self.workspace > 9 {
             anyhow::bail!("app {id:?} workspace {} is outside 0..=9", self.workspace);
         }
+        if self.workspace > 0 && self.owned_workspace().is_none() {
+            anyhow::bail!(
+                "app {id:?} has workspace {} but no app_id or class in match, \
+                 so pt35d cannot tell its windows apart",
+                self.workspace
+            );
+        }
         Ok(())
     }
+}
+
+/// A sway criteria regex for exactly `name`, in any case.
+fn whole_name(name: &str) -> String {
+    let mut out = String::from("(?i)^");
+    for ch in name.chars() {
+        if "\\.^$|?*+()[]{}".contains(ch) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out.push('$');
+    out
 }
 
 impl AppTable {
@@ -354,8 +391,33 @@ env = { FOO = "bar" }
         .unwrap();
         assert_eq!(
             table.get("files").unwrap().sway_criteria_list(),
-            vec!["[app_id=\"pcmanfm\"]", "[class=\"Pcmanfm\"]"]
+            vec!["[app_id=\"(?i)^pcmanfm$\"]", "[class=\"(?i)^Pcmanfm$\"]"]
         );
+    }
+
+    #[test]
+    fn criteria_match_the_whole_name_only() {
+        // Checked against sway 1.10: a bare "foot" also matched footclient.
+        assert_eq!(whole_name("foot"), "(?i)^foot$");
+        assert_eq!(
+            whole_name("org.gnome.Calculator"),
+            r"(?i)^org\.gnome\.Calculator$"
+        );
+        assert_eq!(whole_name("a+b(c)"), r"(?i)^a\+b\(c\)$");
+    }
+
+    #[test]
+    fn a_workspace_needs_an_app_id_or_class() {
+        let table: AppTable = toml::from_str(
+            "[app.notes]\nexec = \"notes\"\nmatch = { title = \"Notes\" }\nworkspace = 6\n",
+        )
+        .unwrap();
+        let err = table.validate().unwrap_err().to_string();
+        assert!(err.contains("no app_id or class"), "{err}");
+        let fine: AppTable =
+            toml::from_str("[app.notes]\nexec = \"notes\"\nmatch = { title = \"Notes\" }\n")
+                .unwrap();
+        fine.validate().unwrap();
     }
 
     #[test]

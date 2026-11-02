@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- An app without a workspace of its own no longer takes another app's.
+  Disk usage, DarkWire, a second terminal and any .desktop app now open on
+  workspace 10 and up. Such an app used to open on the workspace in front.
+  Opened over the Editor, it pushed the Editor off workspace 3. Opened on
+  Music's empty workspace 5, it stayed there until Music opened, and then
+  pt35d moved it onto another app's workspace (#6).
+- A tenth window no longer splits the screen. pt35d looked for a free
+  workspace only among 1 to 9, so the tenth window shared one with another
+  app (#6).
+- When pt35d moves an app to another workspace, its dialogs go with it.
+  They used to stay behind, and the app waited on a dialog you could not see.
+
+### Changed
+
+- When the terminal on workspace 1 closes, pt35d moves the oldest remaining
+  terminal to 1, so Super + 1 still finds one.
+
 ## 0.4.3 (2026-11-02)
 
 ### Added

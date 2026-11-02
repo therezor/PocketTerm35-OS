@@ -157,11 +157,17 @@ impl Sway {
         let focused = workspaces
             .as_array()
             .and_then(|list| list.iter().find(|w| w["focused"].as_bool() == Some(true)));
-        Ok(focused
-            .and_then(|w| w["num"].as_i64())
-            .unwrap_or(1)
-            .clamp(0, 9) as u8)
+        Ok(workspace_number(
+            focused.and_then(|w| w["num"].as_i64()).unwrap_or(1),
+        ))
     }
+}
+
+/// A sway workspace number as the shell keeps it. Apps with no workspace of
+/// their own live past 9, so there is no cap there. A named workspace (sway
+/// says -1) and one past 255 read as 0, which no window is placed on.
+fn workspace_number(num: i64) -> u8 {
+    u8::try_from(num).unwrap_or(0)
 }
 
 /// One open window, as the dock and the switcher need it.
@@ -181,7 +187,7 @@ pub struct Window {
 /// Flatten a sway tree into the windows it holds, in workspace order.
 ///
 /// The scratchpad is skipped. sway gives `__i3_scratch` `num: -1`, which would
-/// clamp to workspace 0 and sort a hidden window to the front of the dock.
+/// read as workspace 0 and sort a hidden window to the front of the dock.
 pub fn windows(node: &serde_json::Value) -> Vec<Window> {
     fn walk(node: &serde_json::Value, workspace: u8, floating: bool, out: &mut Vec<Window>) {
         let kind = node["type"].as_str().unwrap_or("");
@@ -189,7 +195,7 @@ pub fn windows(node: &serde_json::Value) -> Vec<Window> {
             return;
         }
         let workspace = if kind == "workspace" {
-            node["num"].as_i64().unwrap_or(0).clamp(0, 9) as u8
+            workspace_number(node["num"].as_i64().unwrap_or(0))
         } else {
             workspace
         };
@@ -296,6 +302,25 @@ mod tests {
         assert_eq!(list[0].workspace, 1);
         assert_eq!(list[1].app, "Pcmanfm");
         assert!(list[1].focused);
+    }
+
+    #[test]
+    fn a_workspace_past_nine_keeps_its_number() {
+        // Apps with no workspace of their own live there. Read as 9, one
+        // would seem to share the Calculator's and be moved on every event.
+        let tree: serde_json::Value = serde_json::from_str(
+            r#"{"type":"root","name":"root","nodes":[
+                 {"type":"output","name":"HDMI-A-1","nodes":[
+                   {"type":"workspace","num":12,"name":"12","nodes":[
+                     {"type":"con","id":7,"name":"ncdu","app_id":"pt35-ncdu","pid":9}
+                   ],"floating_nodes":[]}
+                 ],"floating_nodes":[]}
+               ],"floating_nodes":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(windows(&tree)[0].workspace, 12);
+        assert_eq!(workspace_number(300), 0);
+        assert_eq!(workspace_number(-1), 0);
     }
 
     #[test]

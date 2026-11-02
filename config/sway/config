@@ -51,10 +51,11 @@ input type:touch {
 }
 
 ### ------------------------------------------------------- window management
-# Every app owns a workspace and is the only window on it: no tiling splits,
-# no stacking to get lost in. 640x480 splits into two unusable halves, so pt35d
-# moves any second window on a workspace to a free one instead of letting sway
-# tile it. Workspace 1 is always a terminal.
+# Every window is the only one on its workspace: no tiling splits, no stacking
+# to get lost in. 640x480 splits into two unusable halves. An app with a
+# workspace in apps.toml lives there; any other window goes to a free workspace
+# no app owns, 10 and up. pt35d's placement keeps it that way. Workspace 1 is
+# always a terminal.
 workspace_layout default
 for_window [shell=".*"] inhibit_idle fullscreen
 
