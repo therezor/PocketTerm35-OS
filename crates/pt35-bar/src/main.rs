@@ -16,6 +16,7 @@ mod ui;
 
 #[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
+    pt35_ui::mark_start();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     ui::run()
 }

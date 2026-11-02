@@ -20,6 +20,7 @@ mod ui;
 
 #[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
+    pt35_ui::mark_start();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     // `--page NAME` opens straight into a submenu (used by `pt35ctl power menu`).

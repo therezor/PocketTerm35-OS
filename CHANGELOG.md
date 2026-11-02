@@ -21,6 +21,12 @@
 
 ### Changed
 
+- The bar and the menu use a tenth of the memory, and the menu opens in a
+  quarter of the time. On a Pi 5 the bar takes 4.4 MB instead of 50 MB, the
+  menu 6.1 MB instead of 61 MB, and the menu draws its first frame in 27 ms
+  instead of 101 ms. The old font library read every glyph in all four
+  DejaVu faces at each start. `ab_glyph` reads a glyph when it is first
+  drawn. Text looks the same.
 - When the terminal on workspace 1 closes, pt35d moves the oldest remaining
   terminal to 1, so Super + 1 still finds one.
 

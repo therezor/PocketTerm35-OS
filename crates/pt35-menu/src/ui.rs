@@ -2548,36 +2548,23 @@ impl App for Menu {
 pub fn run(page: Option<String>) -> Result<()> {
     let (theme, theme_problems) = pt35_common::load_theme_report();
     let tree = pt35_common::load_config("pt35/menu.toml");
-    // Each face takes ~50ms to parse on a Pi, and the menu is started on every
-    // open. In parallel, the four cost one.
-    let load = |faces: Vec<String>| {
-        std::thread::spawn(move || {
-            let mut last = Err(anyhow::anyhow!("no font"));
-            for face in faces {
-                last = Font::load(&face);
-                if last.is_ok() {
-                    break;
-                }
+    // The first face that loads. A missing bold or mono face is not worth
+    // failing over: the regular one reads.
+    let load = |faces: &[&String]| {
+        let mut last = Err(anyhow::anyhow!("no font"));
+        for face in faces {
+            last = Font::load(face);
+            if last.is_ok() {
+                break;
             }
-            last
-        })
+        }
+        last
     };
     let f = &theme.font;
-    let font = load(vec![f.family.clone()]);
-    let mono = load(vec![f.family_mono.clone(), f.family.clone()]);
-    // A missing bold face is not worth failing over: the regular one reads.
-    let bold = load(vec![f.family_bold.clone(), f.family.clone()]);
-    let mono_bold = load(vec![
-        f.family_mono_bold.clone(),
-        f.family_mono.clone(),
-        f.family.clone(),
-    ]);
-    let join = |handle: std::thread::JoinHandle<Result<Font>>| {
-        handle
-            .join()
-            .map_err(|_| anyhow::anyhow!("font loader panicked"))?
-    };
-    let (font, mono, bold, mono_bold) = (join(font)?, join(mono)?, join(bold)?, join(mono_bold)?);
+    let font = load(&[&f.family])?;
+    let mono = load(&[&f.family_mono, &f.family])?;
+    let bold = load(&[&f.family_bold, &f.family])?;
+    let mono_bold = load(&[&f.family_mono_bold, &f.family_mono, &f.family])?;
     let body = 480u32
         .saturating_sub(theme.bar.height)
         .saturating_sub(theme.menu.header_height)

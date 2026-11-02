@@ -197,6 +197,7 @@ struct State<A: App + 'static> {
     height: u32,
     configured: bool,
     dirty: bool,
+    drawn: bool,
     running: bool,
     base_layer: Layer,
     raised: bool,
@@ -264,6 +265,7 @@ pub fn run<A: App + 'static>(app: A, spec: SurfaceSpec) -> Result<()> {
         width: 640,
         height: spec.height.max(1),
         configured: false,
+        drawn: false,
         dirty: true,
         running: true,
         base_layer: spec.layer,
@@ -375,6 +377,15 @@ impl<A: App + 'static> State<A> {
         }
         surface.commit();
         self.dirty = false;
+        if !self.drawn {
+            self.drawn = true;
+            if let Some(time) = crate::since_start() {
+                log::debug!(
+                    "first frame {:.1} ms after start",
+                    time.as_secs_f64() * 1000.0
+                );
+            }
+        }
     }
 }
 

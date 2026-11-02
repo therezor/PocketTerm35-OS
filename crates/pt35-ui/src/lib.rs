@@ -21,6 +21,20 @@ pub mod pixel;
 #[cfg(target_os = "linux")]
 pub mod layer;
 
+/// When `main` began, for the first-frame time in the debug log. The menu is
+/// a new process per open, so that time is what opening it costs.
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// Call first thing in `main`.
+pub fn mark_start() {
+    STARTED.get_or_init(std::time::Instant::now);
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn since_start() -> Option<std::time::Duration> {
+    STARTED.get().map(|start| start.elapsed())
+}
+
 pub use canvas::Canvas;
 pub use font::Font;
 pub use keys::{Key, Navigation};

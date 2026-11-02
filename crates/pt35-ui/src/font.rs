@@ -1,10 +1,14 @@
 //! Font loading and text drawing.
 //!
 //! No fontconfig and no shaping engine: the shell's own UI is Latin text at a
-//! handful of sizes, so a single TTF rasterised by fontdue covers it at a
-//! fraction of the memory. The font is looked up by the family name in
-//! `theme.toml` against the paths Raspberry Pi OS actually ships.
+//! handful of sizes. The font is looked up by the family name in `theme.toml`
+//! against the paths Raspberry Pi OS actually ships.
+//!
+//! ab_glyph outlines a glyph only when it is first drawn. fontdue, before it,
+//! parsed every glyph in the face on load: 19 MB and 43 ms for DejaVu Sans on
+//! a Pi 5, in every bar and in every menu, for a few dozen glyphs.
 
+use ab_glyph::{Font as _, FontVec, PxScale, ScaleFont as _};
 use anyhow::{Context, Result};
 use pt35_common::theme::Rgb;
 use std::collections::HashMap;
@@ -13,10 +17,60 @@ use std::path::PathBuf;
 use crate::canvas::Canvas;
 
 pub struct Font {
-    inner: fontdue::Font,
-    /// Rasterised glyphs, keyed by (char, size in 1/10 px) — the shell redraws
+    inner: FontVec,
+    /// Rasterised glyphs, keyed by (char, size in 1/10 px). The shell redraws
     /// the same few strings constantly, so caching is most of the speed.
-    cache: HashMap<(char, u32), (fontdue::Metrics, Vec<u8>)>,
+    cache: HashMap<(char, u32), Glyph>,
+}
+
+/// One rasterised glyph.
+struct Glyph {
+    /// The coverage bitmap's top-left corner, from the pen on the baseline.
+    left: i32,
+    top: i32,
+    width: usize,
+    height: usize,
+    advance: f32,
+    coverage: Vec<u8>,
+}
+
+impl Glyph {
+    fn rasterise(font: &FontVec, ch: char, size: f32) -> Self {
+        // Every size in theme.toml is pixels per em. ab_glyph's scale is the
+        // height from descender to ascender.
+        let per_em = font.units_per_em().unwrap_or(1000.0);
+        let scale = PxScale::from(size * font.height_unscaled() / per_em);
+        let id = font.glyph_id(ch);
+        let advance = font.as_scaled(scale).h_advance(id);
+        let placed = id.with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
+        let Some(outline) = font.outline_glyph(placed) else {
+            // A space: nothing to draw, only an advance.
+            return Self {
+                left: 0,
+                top: 0,
+                width: 0,
+                height: 0,
+                advance,
+                coverage: Vec::new(),
+            };
+        };
+        let bounds = outline.px_bounds();
+        let (width, height) = (bounds.width() as usize, bounds.height() as usize);
+        let mut coverage = vec![0u8; width * height];
+        outline.draw(|x, y, c| {
+            if let Some(px) = coverage.get_mut(y as usize * width + x as usize) {
+                *px = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+        });
+        Self {
+            left: bounds.min.x as i32,
+            top: bounds.min.y as i32,
+            width,
+            height,
+            advance,
+            coverage,
+        }
+    }
 }
 
 /// Where a family name might live on Raspberry Pi OS / Debian.
@@ -57,7 +111,7 @@ impl Font {
             let Ok(bytes) = std::fs::read(path) else {
                 continue;
             };
-            let inner = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
+            let inner = FontVec::try_from_vec(bytes)
                 .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
             log::debug!("font {family:?} from {}", path.display());
             return Ok(Self {
@@ -77,19 +131,19 @@ impl Font {
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self> {
-        let inner = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let inner = FontVec::try_from_vec(bytes).map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(Self {
             inner,
             cache: HashMap::new(),
         })
     }
 
-    fn glyph(&mut self, ch: char, size: f32) -> &(fontdue::Metrics, Vec<u8>) {
+    fn glyph(&mut self, ch: char, size: f32) -> &Glyph {
         let key = (ch, (size * 10.0) as u32);
+        let font = &self.inner;
         self.cache
             .entry(key)
-            .or_insert_with(|| self.inner.rasterize(ch, size))
+            .or_insert_with(|| Glyph::rasterise(font, ch, size))
     }
 
     /// Width in pixels of `text` at `size`.
@@ -101,7 +155,7 @@ impl Font {
     pub fn measure_tracked(&mut self, text: &str, size: f32, tracking: f32) -> u32 {
         let mut width = 0.0;
         for ch in text.chars() {
-            width += self.glyph(ch, size).0.advance_width + tracking;
+            width += self.glyph(ch, size).advance + tracking;
         }
         (width - tracking).max(0.0).ceil() as u32
     }
@@ -134,16 +188,15 @@ impl Font {
     ) -> i32 {
         let mut pen = x as f32;
         for ch in text.chars() {
-            let (metrics, bitmap) = self.glyph(ch, size).clone();
-            let gx = pen as i32 + metrics.xmin;
-            let gy = y - metrics.height as i32 - metrics.ymin;
-            for row in 0..metrics.height {
-                for col in 0..metrics.width {
-                    let coverage = bitmap[row * metrics.width + col];
+            let glyph = self.glyph(ch, size);
+            let (gx, gy) = (pen as i32 + glyph.left, y + glyph.top);
+            for row in 0..glyph.height {
+                for col in 0..glyph.width {
+                    let coverage = glyph.coverage[row * glyph.width + col];
                     canvas.blend(gx + col as i32, gy + row as i32, coverage, color);
                 }
             }
-            pen += metrics.advance_width + tracking;
+            pen += glyph.advance + tracking;
         }
         (pen - tracking).ceil() as i32
     }
@@ -233,6 +286,33 @@ mod tests {
             font.measure(&tiny, 16.0) <= 4,
             "{tiny:?} overflows a 4px budget"
         );
+    }
+
+    #[test]
+    fn sizes_are_pixels_per_em() {
+        // theme.toml was laid out with fontdue, which takes pixels per em.
+        // ab_glyph's own scale is a line height: unconverted, text grows.
+        let Some(mut font) = test_font() else { return };
+        let id = font.inner.glyph_id('H');
+        let per_em = font.inner.units_per_em().unwrap();
+        let want = font.inner.h_advance_unscaled(id) * 20.0 / per_em;
+        let glyph = font.glyph('H', 20.0);
+        assert!(
+            (glyph.advance - want).abs() < 0.01,
+            "{} vs {want}",
+            glyph.advance
+        );
+        // Ink above the baseline, as tall as a capital at 20px per em.
+        assert!(glyph.top < -10 && glyph.top + glyph.height as i32 <= 1);
+        assert!(glyph.coverage.contains(&255), "solid stems");
+    }
+
+    #[test]
+    fn a_space_has_an_advance_and_no_ink() {
+        let Some(mut font) = test_font() else { return };
+        let space = font.glyph(' ', 16.0);
+        assert!(space.advance > 2.0);
+        assert!(space.coverage.iter().all(|c| *c == 0));
     }
 
     #[test]

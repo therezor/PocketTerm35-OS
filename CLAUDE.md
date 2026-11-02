@@ -186,8 +186,11 @@ window appears in front.
   and GTK's `enable-animations` with them. Settings > Appearance has the
   switch. Qt's GTK theme does not read that setting.
 - Performance comes first. The menu is a new process per open, so nothing slow
-  may run before its first frame: measure it (about 75ms on a Pi 5). An icon
-  miss once walked every theme folder and cost 3.5s.
+  may run before its first frame. Measure it: `RUST_LOG=pt35_ui=debug
+  pt35-menu` logs the first frame, about 27 ms on a Pi 5. An icon miss once
+  walked every theme folder and cost 3.5s. fontdue once parsed every glyph of
+  the four faces on each start, 70 ms and 57 MB. `ab_glyph` reads a glyph
+  when it is first drawn.
 - Mint on charcoal, mono for readouts and sans for labels. Geometry and colour
   live in `config/pt35/theme.toml`. Do not hardcode either in a widget.
   Settings > Appearance writes `~/.config/pt35/appearance.toml`, layered between
