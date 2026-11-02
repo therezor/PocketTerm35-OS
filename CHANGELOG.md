@@ -15,6 +15,9 @@
   app (#6).
 - When pt35d moves an app to another workspace, its dialogs go with it.
   They used to stay behind, and the app waited on a dialog you could not see.
+- Super + Enter opens the terminal in front. sway used to start foot itself,
+  and the terminal's assign rule put it on workspace 1, out of sight unless
+  you were on 1 already.
 
 ### Changed
 

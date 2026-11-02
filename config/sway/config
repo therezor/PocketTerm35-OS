@@ -5,7 +5,10 @@
 
 ### ------------------------------------------------------------------ basics
 set $mod Mod4
-set $term foot pt35-hello
+# Through pt35d, so the terminal opens in front. A bare exec put it on 1 by the
+# assign, out of sight, and a second one past 9. Bare foot only if pt35d is not
+# running: a pt35ctl that timed out on a busy pt35d still gets its terminal.
+set $term pt35ctl launch terminal || pgrep -x pt35d >/dev/null || foot pt35-hello
 set $menu pt35ctl menu toggle
 set $ctl  pt35ctl
 
