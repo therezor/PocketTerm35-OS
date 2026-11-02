@@ -1,31 +1,33 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 (2026-11-02)
 
 ### Added
 
-- An Animations switch in Settings > Appearance. It turns off the menu's
-  motion at once, and GTK apps follow it too. Qt apps do not: Qt's GTK theme
-  does not read the setting (#4).
+- Settings > Appearance has an Animations switch. It stops the menu's motion
+  in the menu that is open, without a restart. GTK apps follow it too, unless
+  `[apps] color_scheme` is `keep`. Qt apps do not, because Qt's GTK theme
+  never reads that setting (#4).
 
 ### Changed
 
-- The hint bar's D-pad pills show arrows, not `<>` and `^v`. On a keyboard
-  with `<` and `>` keys, `<>` read as those keys (#5).
+- The D-pad pills in the hint bar show arrows instead of `<>` and `^v`. On a
+  keyboard with `<` and `>` keys, `<>` looked like those two keys (#5).
 
 ### Fixed
 
-- An app with a workspace of its own, opened from the launcher, stays in
-  front. Focus used to go back to the window you came from while the app
-  started, so it opened out of sight (#2).
-- Closing a window works while its menu bar is open. A GTK app ignored the
-  close with its menu open, so the window came back after 3 seconds (#3).
-- A reload that fails keeps the config that was running. pt35d used to keep
-  the tables it had just rejected, half applied (#7).
-- The installer works on a system set to another language. It read the
-  English "Candidate:" line from `apt-cache policy`, so on a German system it
-  found no sway and stopped with "no 'sway' package available". It now asks
-  apt for English (#1).
+- An app opened from the launcher now opens in front. If the app had a
+  workspace of its own, focus went back to the window you came from while
+  the app started, and the app opened out of sight (#2).
+- L closes a window that has its menu bar open. A GTK app ignored the close
+  while its menu was open, and the window came back after 3 seconds. pt35d
+  now closes the menu first (#3).
+- A `pt35ctl reload` that fails keeps the config that was running. pt35d used
+  to keep the menu and apps files it had just rejected, half applied (#7).
+- The installer works on a system in another language. It looked for the
+  English "Candidate:" line in `apt-cache policy`. On a German system apt
+  translates that line, so the installer found no sway and stopped with
+  "no 'sway' package available". It now runs apt in English (#1).
 
 ## 0.4.2 (2026-10-21)
 
