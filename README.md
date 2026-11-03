@@ -118,14 +118,26 @@ Nothing leaves the device.
 | model | download | for | tool calls* | Pi 5 speed** |
 |---|---|---|---|---|
 | `minicpm5-2b` | 1.5 GB | 4 GB RAM or more | 18/20 | 58 / 8.2 tokens/s |
+| `lfm3-1.7b` | 1.0 GB | 4 GB RAM or more | 14/20*** | 96 / 11.7 tokens/s |
 | `minicpm5-1b` | 0.7 GB | 2 GB RAM | 12/20 | 100 / 20 tokens/s |
 | `qwen3-0.6b` | 0.4 GB | 1 GB RAM | 12/20 | 133 / 28 tokens/s |
 
 \* Twenty agent tasks: the right tool with the right arguments.
-\*\* `llama-bench`: reading a 512-token prompt / writing the answer. Prompts
-read slower as the context fills: 3000 tokens in, the 2B reads 30 tokens/s.
+\*\* `llama-bench` at 2.4 GHz: reading a 512-token prompt / writing the
+answer. Prompts read slower as the context fills: 3000 tokens in, the 2B
+reads 30 tokens/s and LFM3 77.
 A Pi 4 has no dot-product instructions, so llama.cpp cannot repack the weights
 for it and prompts read slower. That is not measured here.
+\*\*\* From a newer set of twenty tasks, with the Default agent's prompt and
+tools. The 2B scored 17/20 on it.
+
+Most of LFM3's layers keep a fixed state instead of a cache that grows with
+every token. So it reads deep prompts fast and gets a long context. But
+llama.cpp can resume it only from a checkpoint about 500 tokens before the
+end of the last prompt, and each turn reads those tokens again. Twenty short
+tasks took LFM3 154 s and the 2B 88 s. With thinking off, LFM3 sometimes
+repeats its answer after a stray `</think>`. With `/effort high` both
+scored 18/20, the 2B in 240 s and LFM3 in 425 s.
 
 With a 16k context full, the 2B takes 2.1 GB and the 1B (8k) 0.85 GB, which
 leaves the desktop room on 4 GB and 2 GB boards. Qwen3 0.6B takes 0.7 GB, more than a
@@ -137,11 +149,12 @@ and frees its RAM after 15 idle minutes. The first answer after that waits for
 the model to load. Every agent has thinking off: at these speeds it costs minutes.
 `/effort high` in darkwire turns it on for that agent, `/effort off` back.
 
-darkwire is in development, so it is not pinned: setup runs its own installer
-for the latest release, and `sudo pt35-ai agent` updates it.
+darkwire is in development, so it is not pinned: setup and `sudo pt35-ai agent`
+run its own installer, which fetches the latest release.
 
 The context is sized to the board: the longest whose cache fits in a fifth of
-RAM. The 2B gets 16k tokens on 4 GB, 32k on 8 GB and 64k on 16 GB.
+RAM. The 2B gets 16k tokens on 4 GB, 32k on 8 GB and 64k on 16 GB. LFM3
+gets 32k on 4 GB and 256k on 16 GB.
 
 The DarkWire tile opens the Default agent, and `/agent` switches to another.
 Each carries only the tools its job needs, one-line tool descriptions and a

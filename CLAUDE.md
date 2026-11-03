@@ -225,6 +225,15 @@ prebuilt llama.cpp in `/opt/pt35-ai`. Models are in `/var/lib/pt35-ai/models`.
   Q4_K_M on the 2B, but at Q4_0 Qwen3 0.6B stops calling tools.
 - The KV cache is f16. q8_0 halves it, but 3000 tokens deep it reads prompts
   2-5x slower on the Pi 5, so only a 1 GB board gets it.
+- Flash attention stays on. With it off, the 2B writes 30% faster 3000
+  tokens deep, but llama.cpp's scratch buffer grows with the context: 2.2 GB
+  for LFM3 at 64k, against 130 MB with it on. `llama-server -lv 4` logs the
+  buffer size. RSS at start does not show it.
+- LFM3 is a hybrid (13 of 24 layers are convolutions). llama.cpp resumes it
+  only from a checkpoint n_ubatch + 4 tokens before the last prompt's end,
+  so every turn reads about 516 tokens again. With thinking off it sometimes
+  writes `answer</think>answer`, and its Q4_K_M does too. No llama.cpp flag
+  strips it.
 - No speculative draft model. MiniCPM5's DSpark draft ships as BF16, which the
   A76 cannot run fast, and even quantized it slowed prose by a quarter. The
   n-gram draft costs nothing when it misses.

@@ -43,7 +43,8 @@ Flags:
   --from-source      build the binaries here instead of downloading a release
   --flash-keyboard   also flash the keyboard firmware (see firmware/)
   --ai[=MODEL]       also set up the local AI agent (MODEL: minicpm5-2b,
-                     minicpm5-1b or qwen3-0.6b; default: the one for this RAM)
+                     lfm3-1.7b, minicpm5-1b or qwen3-0.6b; default: the one
+                     for this RAM)
   --no-ai            do not ask about the AI agent
   --user NAME        set up the session for this user (default: $SUDO_USER)
   --version          print the installer version
@@ -274,28 +275,30 @@ ask_ai() {
     return
   fi
   ram=$(awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo)
-  if [ "$ram" -ge 3200 ]; then rec=1; elif [ "$ram" -ge 1600 ]; then rec=2; else rec=3; fi
+  if [ "$ram" -ge 3200 ]; then rec=1; elif [ "$ram" -ge 1600 ]; then rec=3; else rec=4; fi
   cat >/dev/tty <<EOF
 
   Optional: a local AI agent. darkwire runs in a terminal, on a model this Pi
   runs itself. Nothing leaves the device.
 
     1) MiniCPM5 2B   1.5 GB   best answers and tool use, 4 GB RAM or more
-    2) MiniCPM5 1B   0.7 GB   2 GB RAM
-    3) Qwen3 0.6B    0.4 GB   1 GB RAM
+    2) LFM3 1.7B     1.0 GB   writes faster, weaker tool use, 4 GB RAM or more
+    3) MiniCPM5 1B   0.7 GB   2 GB RAM
+    4) Qwen3 0.6B    0.4 GB   1 GB RAM
     n) no AI agent
 
   This Pi has $ram MB of RAM: $rec is the one for it.
 EOF
   case "$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)" in
-    *"Raspberry Pi 4"*) printf '  A Pi 4 reads prompts slower than a Pi 5: 2 is quicker to answer.\n' >/dev/tty ;;
+    *"Raspberry Pi 4"*) printf '  A Pi 4 reads prompts slower than a Pi 5: 3 is quicker to answer.\n' >/dev/tty ;;
   esac
   printf '\n  Choice [%s]: ' "$rec" >/dev/tty
   read -r answer </dev/tty || answer=n
   case "${answer:-$rec}" in
     1) AI=yes; AI_MODEL=minicpm5-2b ;;
-    2) AI=yes; AI_MODEL=minicpm5-1b ;;
-    3) AI=yes; AI_MODEL=qwen3-0.6b ;;
+    2) AI=yes; AI_MODEL=lfm3-1.7b ;;
+    3) AI=yes; AI_MODEL=minicpm5-1b ;;
+    4) AI=yes; AI_MODEL=qwen3-0.6b ;;
     *) AI=no ;;
   esac
 }
