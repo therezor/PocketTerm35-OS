@@ -1,45 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.4.4 (2026-11-03)
 
-### Fixed
+### Added
 
-- An app without a workspace of its own no longer takes another app's.
-  Disk usage, DarkWire, a second terminal and any .desktop app now open on
-  workspace 10 and up. Such an app used to open on the workspace in front.
-  Opened over the Editor, it pushed the Editor off workspace 3. Opened on
-  Music's empty workspace 5, it stayed there until Music opened, and then
-  pt35d moved it onto another app's workspace (#6).
-- A tenth window no longer splits the screen. pt35d looked for a free
-  workspace only among 1 to 9, so the tenth window shared one with another
-  app (#6).
-- When pt35d moves an app to another workspace, its dialogs go with it.
-  They used to stay behind, and the app waited on a dialog you could not see.
-- Super + Enter opens the terminal in front. sway used to start foot itself,
-  and the terminal's assign rule put it on workspace 1, out of sight unless
-  you were on 1 already.
+- A new AI model, LFM3 1.7B. Pick it in the installer or with
+  `sudo pt35-ai model lfm3-1.7b`.
 
 ### Changed
 
-- The bar and the menu use a tenth of the memory, and the menu opens in a
-  quarter of the time. On a Pi 5 the bar takes 4.4 MB instead of 50 MB, the
-  menu 6.1 MB instead of 61 MB, and the menu draws its first frame in 27 ms
-  instead of 101 ms. The old font library read every glyph in all four
-  DejaVu faces at each start. `ab_glyph` reads a glyph when it is first
-  drawn. Text looks the same.
-- When the terminal on workspace 1 closes, pt35d moves the oldest remaining
-  terminal to 1, so Super + 1 still finds one.
-- Settings is grouped. Appearance holds the palette, the accent, dark apps
-  and animations. The new Bar screen holds the clock, the mode readout and
-  the skull button. The new Menu screen holds row numbers, window previews
-  and .desktop apps. Palette, Accent, Clock and Animations each open a
-  screen of their own, and their row reads out the value in use. Appearance
-  was one list of 20 rows. A `[menu.settings]` of your own in
-  `~/.config/pt35/menu.toml` needs `{ builtin = "bar" }` and
-  `{ builtin = "menu" }` rows to reach the settings that moved.
-- Animations has a speed: Off, then 1 (slowest) to 5 (fastest). 3 is the
-  old timing. `animations = true` and `false` in a theme file still work,
-  as 3 and Off.
+- 10x lower memory use: the bar and the menu take 10.5 MB (was 111 MB).
+- The menu opens 4x faster: 27 ms (was 101 ms).
+- Settings has new Bar and Menu screens, and Appearance is shorter. If you
+  changed `[menu.settings]` yourself, add `{ builtin = "bar" }` and
+  `{ builtin = "menu" }` to it.
+- Animations has a speed setting: Off, or 1 to 5.
+- When the terminal on workspace 1 closes, another terminal takes its place,
+  so Super + 1 still finds one.
+- Updated llama.cpp and darkwire for the AI agent. To update an existing
+  agent, run `sudo pt35-ai model` with the model you use.
+
+### Fixed
+
+- Apps like Disk usage, DarkWire and a second terminal no longer take
+  another app's workspace (#6).
+- A tenth window no longer splits the screen (#6).
+- Dialogs follow their app to another workspace.
+- Super + Enter opens the terminal in front.
 
 ## 0.4.3 (2026-11-02)
 
