@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5 (2026-11-04)
+
+### Fixed
+
+- Flashing the keyboard no longer stops it typing on units whose HID library
+  is named `adafruit_hid` (#8). `pt35-kbd restore` had the same fault.
+
 ## 0.4.4 (2026-11-03)
 
 ### Added
