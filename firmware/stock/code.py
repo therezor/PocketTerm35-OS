@@ -1,10 +1,18 @@
 # main_oop.py
 import usb_hid
-from hid.keyboard import Keyboard
-from hid.keycode import Keycode
-from hid.consumer_control import ConsumerControl
-from hid.consumer_control_code import ConsumerControlCode
-from hid.keyboard_layout_us import KeyboardLayoutUS
+# Units ship Adafruit's HID library under either name.
+try:
+    from adafruit_hid.keyboard import Keyboard
+    from adafruit_hid.keycode import Keycode
+    from adafruit_hid.consumer_control import ConsumerControl
+    from adafruit_hid.consumer_control_code import ConsumerControlCode
+    from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
+except ImportError:
+    from hid.keyboard import Keyboard
+    from hid.keycode import Keycode
+    from hid.consumer_control import ConsumerControl
+    from hid.consumer_control_code import ConsumerControlCode
+    from hid.keyboard_layout_us import KeyboardLayoutUS
 import board
 import microcontroller
 import digitalio

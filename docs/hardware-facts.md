@@ -57,6 +57,11 @@ The firmware is **CircuitPython 10.0.0-beta.0** with `boot.py` calling
 holds the matrix as a plain table, and `firmware/` changes the face-button row to
 F13-F18. See `firmware/README.md`.
 
+Adafruit's HID library has two names. A unit built on CircuitPython of
+2026-08-21 has it as `/lib/hid`, and `import adafruit_hid` fails. One built on
+2025-07-23 has `/lib/adafruit_hid` (issue #8). `boot_out.txt` gives the date.
+Both firmware files try `adafruit_hid` first, then `hid`.
+
 Matrix: rows `GP16 GP10 GP11 GP12 GP13 GP14 GP15`, columns `GP0`-`GP9`. Row 0 is
 the D-pad and the face buttons. Row 6 carries Fn, Ctrl, Alt, Select, Space,
 Start, right Alt and **Super** (`WINDOWS`), so the unit does have a Super key.

@@ -53,7 +53,8 @@ Run it on the Pi, not over the network: the serial port is local to the device.
 
 ## Going back
 
-`stock/code.py` is the original, read off the board before the change.
+`stock/code.py` is the original, read off the board before the change. One
+edit: it imports the HID library under either name, like `code.py`.
 
 ```sh
 sudo pt35-kbd restore
