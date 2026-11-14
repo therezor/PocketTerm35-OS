@@ -87,6 +87,7 @@ taskbar for a couple of seconds: "Saved shot.png", "no audio".
 | Super + f | fullscreen (hides the bar) |
 | Super + r | pull an oversized window back on screen |
 | Super + s | screenshot |
+| Super + l | lock the screen |
 | Fn + Select | screenshot |
 | power button | power menu; press again to close it |
 
@@ -94,6 +95,36 @@ There is no tiling. One window owns the screen, and each window gets a
 workspace of its own. An app with a workspace in `apps.toml` is always on it,
 so Super + its number finds it. Everything else, a second terminal included,
 goes to 10 and up: Super + Tab, the dock or the switcher reach those.
+
+## Fn keys
+
+Hold Fn for the blue legends.
+
+| Fn + | what it does |
+|---|---|
+| 1 ... 0, O, P | F1 ... F12 |
+| Q | Escape |
+| W | mute |
+| E, R | volume down, up |
+| T, Y, U | previous, play or pause, next track |
+| I | lock the screen (it sends Super + l) |
+| A S D F G H J K | `` ` `` `~` `\` `\|` `{` `}` `[` `]` |
+| Backspace | Delete |
+| Z, X, V, B, N | Insert, Home, End, Page Up, Page Down |
+| M | Scroll Lock: in the terminal, browse the scrollback |
+| C | blank the screen until the next key |
+| `-`, `=` | brightness down, up |
+| Select | Print Screen: a screenshot |
+| Start | Pause, passed to the app |
+
+The track keys work with any player that speaks MPRIS: VLC, Chromium, and
+mpv with `mpv-mpris`. With nothing playing the bar says "no player".
+
+### Scroll Lock in the terminal
+
+Fn + M in foot opens the scrollback. The D-pad scrolls by line, Fn + B and
+Fn + N by page, Home and End go to the ends. Fn + M again, or B, goes back to
+the prompt. Typing searches the scrollback.
 
 ## Keyboard firmware
 
@@ -122,8 +153,9 @@ With the patched firmware, brightness is a slider in Quick settings and
 `pt35ctl brightness`. On stock it is Fn with `-` and `=`. Fn + C blanks the
 screen.
 
-The speaker gain is on the keyboard too: Fn and the volume keys. The volume in
-the bar and the menu is PipeWire's, a separate knob.
+Fn with W, E and R is the same volume as the bar and the menu: PipeWire's.
+On stock firmware they change the speaker amp's gain instead, which the bar
+does not show. Flash the patched firmware again after updating to 0.4.6.
 
 ## keyd
 

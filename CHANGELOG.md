@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.6 (unreleased)
+
+### Added
+
+- The Wi-Fi password is asked in a popup over the Network screen, not in a
+  terminal. X or Tab shows or hides it. A saved network joins without
+  asking, and a wrong password says so and keeps what you typed.
+- A "Scan for networks" row at the top of the Network screen.
+- Every blue Fn legend on the keyboard works. Fn with T, Y and U play,
+  pause and skip in VLC, Chromium or mpv (with `mpv-mpris`). Fn + I locks
+  the screen. Fn + M in the terminal browses the scrollback.
+
+### Changed
+
+- Fn with W, E and R change the volume the bar shows. They changed the
+  speaker amp's gain before. Run `sudo pt35-kbd flash` to get this.
+
+### Fixed
+
+- GL apps and X11 apps render on the GPU, not on the CPU (#9). On a Pi 5,
+  a video in mpv used 12 times less CPU.
+
 ## 0.4.5 (2026-11-04)
 
 ### Fixed

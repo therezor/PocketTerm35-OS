@@ -17,6 +17,22 @@ The 3.5" 640×480 IPS panel is driven over HDMI and comes up with the stock
 node; they are touchscreen-only. Nothing in `config.txt` is needed for the
 picture.
 
+### GPU: vc4 shows, v3d renders
+Captured on the Pi 5, 2026-11-14:
+
+| node | driver | job |
+|---|---|---|
+| `card0`, `renderD128` | `v3d` | the GPU |
+| `card1` | `vc4-drm` | the display (KMS), no render node |
+
+wlroots renders through the display device unless told otherwise, and tells
+clients to render there too. vc4 has no render node, so Wayland GL apps and
+Xwayland fell back to llvmpipe (#9). `pt35-session` sets
+`WLR_RENDER_DRM_DEVICE` to the render node whose driver is `v3d`. Buffers for
+the panel still come from vc4. The `v3d` module also binds `brcm,2711-v3d`,
+the Pi 4's GPU. The first line of `$XDG_RUNTIME_DIR/pt35/sway.log` names the
+node in use.
+
 ### Touchscreen: Goodix GT911 on I²C-1, address 0x5d
 Decompiling the shipped overlays (see `boot/README.md`):
 

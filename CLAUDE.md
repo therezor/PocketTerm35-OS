@@ -21,6 +21,9 @@ Applies to chat replies, commit messages, docs and code comments.
 Captured from the board, not guessed. See `docs/hardware-facts.md`.
 
 - Display: HDMI-A-1, native 640x480. No overlay needed for the picture.
+- GPU: vc4 (`card1`) drives the panel and has no render node. v3d
+  (`renderD128`) renders. `pt35-session` names the v3d node, found by driver,
+  in `WLR_RENDER_DRM_DEVICE`, or GL apps and Xwayland run on llvmpipe (#9).
 - Touch: GT911 on i2c-1 at 0x5d. Use `waveshare-35dpi-5b.dtbo` on both Pi 4B and Pi 5.
 - Input: RP2040 at USB `1209:0001`. Plain HID keyboard plus a 5-button HID mouse.
   No gamepad device.
