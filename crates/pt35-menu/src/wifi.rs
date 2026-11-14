@@ -244,6 +244,9 @@ impl Prompt {
 
     /// What NetworkManager would refuse anyway, said before it is asked.
     pub fn check(&self) -> Result<(), &'static str> {
+        if !self.has_field() {
+            return Ok(());
+        }
         let text = &self.password;
         match self.network.security {
             Security::Psk => {
@@ -548,6 +551,14 @@ mod tests {
         assert!(!prompt.network.saved);
         assert_eq!(prompt.message, Some(("Password needed".into(), false)));
         assert!(prompt.has_field());
+    }
+
+    #[test]
+    fn a_saved_network_retries_without_a_field() {
+        let mut prompt = Prompt::connecting(network(Security::Psk, true));
+        prompt.failed(Failure::Other("Timeout expired (45 seconds)".into()));
+        assert!(!prompt.has_field());
+        assert_eq!(prompt.key(&Key::new(sym::RETURN)), Action::Connect);
     }
 
     #[test]

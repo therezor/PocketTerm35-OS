@@ -284,9 +284,10 @@ pub struct Menu {
     scrolling: bool,
     /// The Wi-Fi password popup, while it is up. It takes every key and tap.
     wifi: Option<crate::wifi::Prompt>,
-    /// A join running on a worker thread. It outlives a cancelled popup, so
-    /// the list still shows the network once it connects.
-    joining: Option<Receiver<Result<(), crate::wifi::Failure>>>,
+    /// A join running on a worker thread, and the network it is for. It
+    /// outlives a cancelled popup, so the list still shows the network once it
+    /// connects.
+    joining: Option<(String, Receiver<Result<(), crate::wifi::Failure>>)>,
     /// The popup's show/hide button as last drawn: `(left, top, right, bottom)`.
     reveal_hit: Option<(i32, i32, i32, i32)>,
 }
@@ -902,7 +903,8 @@ impl Menu {
                 if network.asks_first() {
                     self.wifi = Some(crate::wifi::Prompt::new(network));
                 } else {
-                    self.joining = Some(crate::wifi::connect(&network, None));
+                    let rx = crate::wifi::connect(&network, None);
+                    self.joining = Some((network.ssid.clone(), rx));
                     self.wifi = Some(crate::wifi::Prompt::connecting(network));
                 }
                 true
@@ -2094,8 +2096,8 @@ impl Menu {
         };
         match prompt.key(key) {
             Action::Connect => {
-                let joining = crate::wifi::connect(&prompt.network, prompt.password());
-                self.joining = Some(joining);
+                let rx = crate::wifi::connect(&prompt.network, prompt.password());
+                self.joining = Some((prompt.network.ssid.clone(), rx));
                 true
             }
             Action::Cancel => {
@@ -2408,7 +2410,8 @@ impl App for Menu {
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
-        if let Some(rx) = &self.joining {
+        if let Some((ssid, rx)) = &self.joining {
+            let ssid = ssid.clone();
             let result = match rx.try_recv() {
                 Ok(result) => Some(result),
                 Err(std::sync::mpsc::TryRecvError::Empty) => None,
@@ -2421,14 +2424,19 @@ impl App for Menu {
                 drawn = true;
                 match result {
                     Ok(()) => {
-                        self.wifi = None;
+                        if self.wifi.as_ref().is_some_and(|p| p.network.ssid == ssid) {
+                            self.wifi = None;
+                        }
                         if self.model.dynamic_builtin() == Some(pt35_common::menu::Builtin::Wifi) {
                             self.resync();
                         }
                     }
+                    // A join cancelled and then left behind by another
+                    // network's popup is not that popup's news.
                     Err(failure) => match self.wifi.as_mut() {
-                        Some(prompt) => prompt.failed(failure),
-                        None => self.error = Some("could not join the network".into()),
+                        Some(prompt) if prompt.network.ssid == ssid => prompt.failed(failure),
+                        Some(_) => {}
+                        None => self.error = Some(format!("could not join {ssid}")),
                     },
                 }
             }
