@@ -32,6 +32,10 @@ pub enum Request {
     Brightness {
         change: Delta,
     },
+    /// Play, pause or skip in whatever media player is running.
+    Media {
+        action: MediaAction,
+    },
     /// Switch between the two input modes.
     Mode {
         mode: ModeRequest,
@@ -125,6 +129,14 @@ impl Request {
             },
             ["brightness", value] => Request::Brightness {
                 change: value.parse::<Delta>()?,
+            },
+            ["media", action] => Request::Media {
+                action: match *action {
+                    "play-pause" => MediaAction::PlayPause,
+                    "next" => MediaAction::Next,
+                    "previous" => MediaAction::Previous,
+                    other => return Err(format!("unknown media action {other:?}")),
+                },
             },
 
             ["mode"] | ["mode", "toggle"] => Request::Mode {
@@ -250,6 +262,25 @@ impl std::str::FromStr for Delta {
                 .parse::<u32>()
                 .map(Delta::Absolute)
                 .map_err(|_| format!("bad value {s:?}: want +N, -N, N or 'mute'")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaAction {
+    PlayPause,
+    Next,
+    Previous,
+}
+
+impl MediaAction {
+    /// The `playerctl` command.
+    pub fn verb(self) -> &'static str {
+        match self {
+            MediaAction::PlayPause => "play-pause",
+            MediaAction::Next => "next",
+            MediaAction::Previous => "previous",
         }
     }
 }
@@ -488,6 +519,9 @@ mod tests {
             change: Delta::Relative(5),
         });
         roundtrip(Request::Scale { value: Some(0.75) });
+        roundtrip(Request::Media {
+            action: MediaAction::PlayPause,
+        });
         roundtrip(Request::Power {
             action: PowerAction::Poweroff,
         });
@@ -615,6 +649,16 @@ mod ctl_tests {
                 action: PowerAction::Menu
             }
         );
+        for action in [
+            MediaAction::PlayPause,
+            MediaAction::Next,
+            MediaAction::Previous,
+        ] {
+            assert_eq!(
+                Request::from_ctl(&["media", action.verb()]).unwrap(),
+                Request::Media { action }
+            );
+        }
         assert_eq!(
             Request::from_ctl(&["cpu", "balanced"]).unwrap(),
             Request::Cpu {
@@ -636,6 +680,7 @@ mod ctl_tests {
         assert!(Request::from_ctl(&["fly", "me", "to", "the", "moon"]).is_err());
         assert!(Request::from_ctl(&["volume", "loud"]).is_err());
         assert!(Request::from_ctl(&["cpu", "turbo"]).is_err());
+        assert!(Request::from_ctl(&["media", "rewind"]).is_err());
         assert!(Request::from_ctl(&["touch", "maybe"]).is_err());
     }
 

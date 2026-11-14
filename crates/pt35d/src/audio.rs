@@ -5,7 +5,7 @@
 //! a hand-built system, and "no audio" is a valid state we report rather than
 //! hide.
 
-use pt35_common::ipc::Delta;
+use pt35_common::ipc::{Delta, MediaAction};
 use std::process::Command;
 
 const SINK: &str = "@DEFAULT_AUDIO_SINK@";
@@ -72,6 +72,17 @@ pub fn apply(backend: Backend, change: Delta) -> bool {
             run(&["amixer", "-M", "set", "Master", &arg]).is_some()
         }
     }
+}
+
+/// Play, pause or skip in whatever MPRIS player is running.
+pub fn media(action: MediaAction) -> Result<(), &'static str> {
+    if !which("playerctl") {
+        return Err("playerctl is not installed");
+    }
+    // playerctl exits 1 with "No players found".
+    run(&["playerctl", action.verb()])
+        .map(drop)
+        .ok_or("no player")
 }
 
 /// Bounded, because the caller holds the session lock: a PipeWire that has

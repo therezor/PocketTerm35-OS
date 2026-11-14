@@ -590,9 +590,14 @@ class KeyboardController:
     def _setup_special_functions(self):
         """设置特殊功能映射"""
         self._special_functions = {
-            CustomKeycodes.FN_MUTE: lambda: self.pin_manager.toggle_pin("gp19"),
-            CustomKeycodes.FN_VOLUME_DOWN: self.ad_pwm.decrease,
-            CustomKeycodes.FN_VOLUME_UP: self.ad_pwm.increase,
+            # pt35-desktop: the standard mute and volume keys, so the volume the
+            # bar shows is the one that moves. The amp gain stays where
+            # _setup_pins puts it.
+            CustomKeycodes.FN_MUTE: lambda: self._consumer(ConsumerControlCode.MUTE),
+            CustomKeycodes.FN_VOLUME_DOWN:
+                lambda: self._consumer(ConsumerControlCode.VOLUME_DECREMENT),
+            CustomKeycodes.FN_VOLUME_UP:
+                lambda: self._consumer(ConsumerControlCode.VOLUME_INCREMENT),
             CustomKeycodes.FN_LOCK_SCREEN: self._lock_screen,
             CustomKeycodes.FN_BL_CONTROL_SCREEN: self._toggle_breathing_light,
             CustomKeycodes.FN_BL_PWM_DOWN: self.bl_pwm.decrease,
@@ -709,6 +714,11 @@ class KeyboardController:
             self.hid.press_key(Keycode.SHIFT, Keycode.RIGHT_BRACKET)
             self.hid.release_all()
     
+    def _consumer(self, code):
+        if self.hid.is_initialized:
+            self.hid.press_consumer(code)
+            self.hid.release_consumer()
+
     def _scan_previous_track(self):
         if self.hid.is_initialized:
             self.hid.press_consumer(ConsumerControlCode.SCAN_PREVIOUS_TRACK)

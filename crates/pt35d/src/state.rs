@@ -755,6 +755,11 @@ impl Session {
                 Ok(Response::Ok)
             }
 
+            Request::Media { action } => {
+                audio::media(action).map_err(anyhow::Error::msg)?;
+                Ok(Response::Ok)
+            }
+
             Request::Brightness { change } => {
                 // A step is from where the panel is, and Fn - and = move it
                 // without telling us.

@@ -18,6 +18,7 @@ usage:
   pt35ctl exec COMMAND...
   pt35ctl volume +5 | -5 | 50 | mute
   pt35ctl brightness +10 | -10 | 50
+  pt35ctl media play-pause|next|previous
   pt35ctl mode [toggle|buttons|mouse]
   pt35ctl scale [1.0|0.75|cycle]
   pt35ctl window fit|close|next|prev|fullscreen

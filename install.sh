@@ -178,7 +178,7 @@ install_from_source() {
   run "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         sway xwayland foot seatd greetd keyd \
         pipewire pipewire-alsa pipewire-pulse wireplumber \
-        xdg-desktop-portal-wlr wl-clipboard grim wtype \
+        xdg-desktop-portal-wlr wl-clipboard grim wtype playerctl \
         fonts-dejavu-core papirus-icon-theme i2c-tools evtest python3-serial htop \
         qt5-gtk-platformtheme qt6-gtk-platformtheme fastfetch bibata-cursor-theme ncdu \
         build-essential pkg-config libxkbcommon-dev"
