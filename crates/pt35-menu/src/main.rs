@@ -14,6 +14,7 @@ mod exec;
 mod live;
 mod model;
 mod providers;
+mod wifi;
 
 #[cfg(target_os = "linux")]
 mod ui;

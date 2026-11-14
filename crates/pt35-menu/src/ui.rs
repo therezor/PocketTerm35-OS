@@ -187,6 +187,35 @@ const FILTER_HINTS: &[Hint] = &[
     },
 ];
 
+/// The Wi-Fi popup's legend. Enter, Esc and Tab where the face buttons are
+/// not keys of their own: on stock firmware they type, in Mouse mode they
+/// click.
+fn prompt_hints(prompt: &crate::wifi::Prompt, keys: bool) -> Vec<Hint> {
+    let (ok, cancel, show) = if keys {
+        ("Enter", "Esc", "Tab")
+    } else {
+        ("A", "B", "X")
+    };
+    let mut hints = Vec::new();
+    if !prompt.connecting {
+        hints.push(Hint {
+            button: ok,
+            action: "Connect",
+        });
+    }
+    hints.push(Hint {
+        button: cancel,
+        action: "Cancel",
+    });
+    if prompt.has_field() && !prompt.connecting {
+        hints.push(Hint {
+            button: show,
+            action: if prompt.reveal { "Hide" } else { "Show" },
+        });
+    }
+    hints
+}
+
 pub struct Menu {
     theme: Theme,
     font: Font,
@@ -253,6 +282,13 @@ pub struct Menu {
     cards_drawn: Vec<i64>,
     /// A drag that began on the scrollbar, until the button or finger lifts.
     scrolling: bool,
+    /// The Wi-Fi password popup, while it is up. It takes every key and tap.
+    wifi: Option<crate::wifi::Prompt>,
+    /// A join running on a worker thread. It outlives a cancelled popup, so
+    /// the list still shows the network once it connects.
+    joining: Option<Receiver<Result<(), crate::wifi::Failure>>>,
+    /// The popup's show/hide button as last drawn: `(left, top, right, bottom)`.
+    reveal_hit: Option<(i32, i32, i32, i32)>,
 }
 
 /// One window's picture, as pt35d captured it.
@@ -420,6 +456,9 @@ impl Menu {
             bad_previews: std::collections::HashMap::new(),
             cards_drawn: Vec::new(),
             scrolling: false,
+            wifi: None,
+            joining: None,
+            reveal_hit: None,
         }
     }
 
@@ -624,6 +663,8 @@ impl Menu {
             "X/Y" => Key::new(pt35_ui::keys::sym::DOWN),
             "Start" => Key::new(pt35_ui::keys::sym::PAUSE),
             "Enter" => Key::new(pt35_ui::keys::sym::RETURN),
+            "Esc" => Key::new(pt35_ui::keys::sym::ESCAPE),
+            "Tab" => Key::new(pt35_ui::keys::sym::TAB),
             _ => return true,
         };
         // Through `key`, so a pill does what its button does: R, L and Select
@@ -775,9 +816,20 @@ impl Menu {
                 if let Err(message) = exec::perform(&command) {
                     self.error = Some(message);
                 }
-                if matches!(&command, crate::model::Command::Helper(c) if c.contains("bluetooth scan"))
-                {
-                    self.scan_until = Some(std::time::Instant::now() + Duration::from_secs(13));
+                // Results land over the next seconds: Bluetooth's discovery
+                // runs 12, a Wi-Fi scan about 4.
+                if let crate::model::Command::Helper(c) = &command {
+                    let scan = if c.contains("bluetooth scan") {
+                        Some(13)
+                    } else if c.contains("wifi scan") {
+                        Some(6)
+                    } else {
+                        None
+                    };
+                    if let Some(seconds) = scan {
+                        self.scan_until =
+                            Some(std::time::Instant::now() + Duration::from_secs(seconds));
+                    }
                 }
                 if matches!(command, crate::model::Command::Theme(_)) {
                     self.theme_picked_at = Some(self.model.depth());
@@ -843,6 +895,15 @@ impl Menu {
                         let _ = pinned;
                     }
                     Err(e) => self.error = Some(format!("pinning: {e}")),
+                }
+                true
+            }
+            Step::Join(network) => {
+                if network.asks_first() {
+                    self.wifi = Some(crate::wifi::Prompt::new(network));
+                } else {
+                    self.joining = Some(crate::wifi::connect(&network, None));
+                    self.wifi = Some(crate::wifi::Prompt::connecting(network));
                 }
                 true
             }
@@ -2012,6 +2073,167 @@ impl Menu {
         );
     }
 
+    fn toggle_mode(&mut self) -> bool {
+        if let Err(message) = self.ctl(&["mode", "toggle"]) {
+            self.error = Some(message);
+        }
+        // Rebuilding the rows would drop a search in progress, or scan for
+        // networks under the Wi-Fi popup. Only the quick panel shows the mode.
+        if self.model.screen().list.mode() == Mode::Nav && self.wifi.is_none() {
+            self.resync();
+        } else {
+            self.status = crate::live::status();
+        }
+        true
+    }
+
+    fn prompt_key(&mut self, key: &Key) -> bool {
+        use crate::wifi::Action;
+        let Some(prompt) = self.wifi.as_mut() else {
+            return true;
+        };
+        match prompt.key(key) {
+            Action::Connect => {
+                let joining = crate::wifi::connect(&prompt.network, prompt.password());
+                self.joining = Some(joining);
+                true
+            }
+            Action::Cancel => {
+                self.wifi = None;
+                true
+            }
+            Action::Quit => {
+                self.wifi = None;
+                self.apply(Step::Quit)
+            }
+            Action::Pass => self.toggle_mode(),
+            Action::Redraw | Action::Nothing => true,
+        }
+    }
+
+    /// The Wi-Fi popup over the dimmed screen: the network, the password
+    /// field with its show/hide button, and a line for what is happening.
+    /// The legend under it shows the popup's own keys.
+    fn draw_wifi(&mut self, canvas: &mut Canvas, hint_top: i32) {
+        self.reveal_hit = None;
+        let Some(prompt) = self.wifi.as_ref() else {
+            return;
+        };
+        let ssid = prompt.network.ssid.clone();
+        let shown = prompt.shown();
+        let has_field = prompt.has_field();
+        let reveal = prompt.reveal;
+        let connecting = prompt.connecting;
+        let message = prompt.message.clone();
+        let theme = self.theme.clone();
+        let c = &theme.color;
+        let pad = theme.menu.padding_x as i32;
+        let radius = theme.menu.radius;
+        let title = theme.font.size_menu;
+        let small = theme.font.size_hint;
+        let field_h = theme.menu.row_height as i32 - 4;
+        let width = canvas.width as i32 - 2 * pad;
+        let inner = width - 2 * pad;
+        let field_block = if has_field { field_h + 12 } else { 0 };
+        let height = pad + title as i32 + 14 + field_block + small as i32 + 6 + pad;
+        let header = theme.menu.header_height as i32;
+        let x = pad;
+        let y = header + (hint_top - header - height).max(0) / 2;
+
+        canvas.rect_alpha(
+            0,
+            0,
+            canvas.width,
+            hint_top.max(0) as u32,
+            c.background,
+            170,
+        );
+        canvas.rounded_rect(
+            x - 1,
+            y - 1,
+            (width + 2) as u32,
+            (height + 2) as u32,
+            radius,
+            c.accent,
+        );
+        canvas.rounded_rect(x, y, width as u32, height as u32, radius, c.background_alt);
+
+        let mut line = y + pad + title as i32;
+        let lead = "Join ";
+        let lead_w = self.font.measure(lead, title) as i32;
+        self.font.draw(canvas, lead, x + pad, line, title, c.muted);
+        let name = self
+            .bold
+            .elide(&ssid, title, (inner - lead_w).max(0) as u32);
+        self.bold
+            .draw(canvas, &name, x + pad + lead_w, line, title, c.foreground);
+        line += 14;
+
+        if has_field {
+            let (fx, fy) = (x + pad, line);
+            let button_w = field_h;
+            let fw = inner - button_w - 8;
+            let edge = if connecting { c.border } else { c.accent };
+            canvas.rounded_rect(
+                fx - 1,
+                fy - 1,
+                (fw + 2) as u32,
+                (field_h + 2) as u32,
+                radius,
+                edge,
+            );
+            canvas.rounded_rect(fx, fy, fw as u32, field_h as u32, radius, c.background);
+            // Mono, so the tail that fits is a count of characters.
+            let char_w = self.mono.measure("M", title).max(1) as i32;
+            let room = ((fw - 24) / char_w).max(1) as usize;
+            let count = shown.chars().count();
+            let tail: String = shown.chars().skip(count.saturating_sub(room)).collect();
+            let baseline = fy + (field_h as f32 * 0.68) as i32;
+            let end = self
+                .mono
+                .draw(canvas, &tail, fx + 10, baseline, title, c.foreground);
+            if !connecting {
+                canvas.rect(end + 1, fy + 10, 2, (field_h - 20).max(1) as u32, c.accent);
+            }
+
+            let bx = fx + fw + 8;
+            canvas.rounded_rect(
+                bx,
+                fy,
+                button_w as u32,
+                field_h as u32,
+                radius,
+                c.background,
+            );
+            let ink = if reveal { c.accent } else { c.muted };
+            let icon = if reveal {
+                "view-conceal"
+            } else {
+                "view-reveal"
+            };
+            let size = 24;
+            if let Some(icon) = self.icons.get_symbolic(icon, size) {
+                let offset = (button_w - size as i32) / 2;
+                icon.draw_tinted(canvas, bx + offset, fy + (field_h - size as i32) / 2, ink);
+            } else {
+                let word = if reveal { "Hide" } else { "Show" };
+                let w = self.font.measure(word, small) as i32;
+                let baseline = fy + field_h / 2 + (small / 3.0) as i32;
+                self.font
+                    .draw(canvas, word, bx + (button_w - w) / 2, baseline, small, ink);
+            }
+            self.reveal_hit = Some((bx, fy, bx + button_w, fy + field_h));
+            line = fy + field_h + 12;
+        }
+
+        if let Some((text, error)) = message {
+            let ink = if error { c.critical } else { c.muted };
+            let text = self.font.elide(&text, small, inner as u32);
+            self.font
+                .draw(canvas, &text, x + pad, line + small as i32, small, ink);
+        }
+    }
+
     fn draw_hints(&mut self, canvas: &mut Canvas, top: i32) {
         let theme = &self.theme;
         let height = theme.menu.hint_height;
@@ -2093,6 +2315,9 @@ impl Menu {
                 button: "Y",
                 action: if pinned { "Unpin" } else { "Pin" },
             });
+        }
+        if let Some(prompt) = &self.wifi {
+            hints = prompt_hints(prompt, mouse || pt35_ui::keys::letters_are_buttons());
         }
         let size = theme.font.size_hint;
         let baseline = top + (height as f32 * 0.62) as i32;
@@ -2183,6 +2408,31 @@ impl App for Menu {
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
+        if let Some(rx) = &self.joining {
+            let result = match rx.try_recv() {
+                Ok(result) => Some(result),
+                Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Some(Err(crate::wifi::Failure::Other("nmcli stopped".into())))
+                }
+            };
+            if let Some(result) = result {
+                self.joining = None;
+                drawn = true;
+                match result {
+                    Ok(()) => {
+                        self.wifi = None;
+                        if self.model.dynamic_builtin() == Some(pt35_common::menu::Builtin::Wifi) {
+                            self.resync();
+                        }
+                    }
+                    Err(failure) => match self.wifi.as_mut() {
+                        Some(prompt) => prompt.failed(failure),
+                        None => self.error = Some("could not join the network".into()),
+                    },
+                }
+            }
+        }
         // Re-read the daemon, so a window closing behind the menu or a toggle
         // flipping shows without reopening it.
         // A capture pt35d took as the menu opened lands a moment after the
@@ -2225,12 +2475,15 @@ impl App for Menu {
         // Devices turn up one by one during a scan: re-read the list each poll
         // until it ends, then once more for the last of them.
         if let Some(until) = self.scan_until {
-            let on_bluetooth =
-                self.model.dynamic_builtin() == Some(pt35_common::menu::Builtin::Bluetooth);
-            if !on_bluetooth || std::time::Instant::now() > until {
+            use pt35_common::menu::Builtin;
+            let scanning_here = matches!(
+                self.model.dynamic_builtin(),
+                Some(Builtin::Bluetooth | Builtin::Wifi)
+            );
+            if !scanning_here || std::time::Instant::now() > until {
                 self.scan_until = None;
             }
-            if on_bluetooth && self.loading.is_none() {
+            if scanning_here && self.loading.is_none() {
                 self.resync();
             }
         }
@@ -2259,6 +2512,9 @@ impl App for Menu {
     fn key(&mut self, key: Key) -> bool {
         use pt35_ui::keys::{navigate, Navigation};
         self.pointer_driven = false;
+        if self.wifi.is_some() {
+            return self.prompt_key(&key);
+        }
         if let Some(popup) = self.popup.as_mut() {
             let count = popup.items.len();
             match navigate(&key, Mode::Nav) {
@@ -2307,19 +2563,7 @@ impl App for Menu {
                 let step = self.model.handle(&Key::new(pt35_ui::keys::sym::BACKSPACE));
                 return self.apply(step);
             }
-            Some(pt35_ui::keys::Button::R) => {
-                if let Err(message) = self.ctl(&["mode", "toggle"]) {
-                    self.error = Some(message);
-                }
-                // Rebuilding the rows would drop a search in progress, and
-                // only the quick panel shows the mode anyway.
-                if mode == Mode::Nav {
-                    self.resync();
-                } else {
-                    self.status = crate::live::status();
-                }
-                return true;
-            }
+            Some(pt35_ui::keys::Button::R) => return self.toggle_mode(),
             // On the switcher, the card under the cursor. Anywhere else the
             // window is hidden behind the menu: closing it unseen is a trap.
             Some(pt35_ui::keys::Button::L) => {
@@ -2374,6 +2618,9 @@ impl App for Menu {
         // motion comes here, so a menu opening under a resting cursor keeps
         // its selection.
         let (x, y) = (x as i32, y as i32);
+        if self.wifi.is_some() {
+            return false;
+        }
         if let Some(popup) = self.popup.as_mut() {
             let hot = popup
                 .rects
@@ -2406,7 +2653,7 @@ impl App for Menu {
     /// moving with a button held, which selects like any other.
     fn drag(&mut self, x: f64, y: f64) -> bool {
         // Once it has the scrollbar the drag keeps it, wherever it wanders.
-        if self.scrolling || self.on_scrollbar(x as i32, y as i32) {
+        if self.wifi.is_none() && (self.scrolling || self.on_scrollbar(x as i32, y as i32)) {
             self.scrolling = true;
             return self.scroll_to(y as i32);
         }
@@ -2421,6 +2668,9 @@ impl App for Menu {
     /// Back is the breadcrumbs, B, or Backspace.
     fn back_click(&mut self, x: f64, y: f64) -> bool {
         let (x, y) = (x as i32, y as i32);
+        if self.wifi.is_some() {
+            return true;
+        }
         self.popup = None;
         let Some(index) = self
             .row_hits
@@ -2446,6 +2696,9 @@ impl App for Menu {
     }
 
     fn scroll(&mut self, down: bool) -> bool {
+        if self.wifi.is_some() {
+            return true;
+        }
         self.popup = None;
         // The D-pad wraps from the last row to the first. A wheel stops at the
         // end, as a wheel does anywhere else.
@@ -2474,6 +2727,21 @@ impl App for Menu {
             return true;
         }
         let (x, y) = (x as i32, y as i32);
+        // Over the Wi-Fi popup only its own button and the legend answer: a
+        // stray tap must not throw away a half-typed password.
+        if self.wifi.is_some() {
+            if let Some((left, top, right, bottom)) = self.reveal_hit {
+                if x >= left && x < right && y >= top && y < bottom {
+                    return self.prompt_key(&Key::new(pt35_ui::keys::sym::TAB));
+                }
+            }
+            for (left, top, right, button) in self.hint_hits.clone() {
+                if y >= top && x >= left && x < right {
+                    return self.press(button);
+                }
+            }
+            return true;
+        }
         // A click with the right-click menu up is for the menu: on a row it
         // does that row, anywhere else it only closes the menu.
         if let Some(popup) = self.popup.take() {
@@ -2594,6 +2862,7 @@ impl App for Menu {
             }
         }
         self.draw_hints(canvas, hint_top);
+        self.draw_wifi(canvas, hint_top);
         self.draw_popup(canvas);
     }
 }

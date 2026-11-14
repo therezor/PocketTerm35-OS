@@ -99,6 +99,8 @@ pub enum Step {
     Quit,
     /// Pin this launcher row to the top, or unpin it.
     TogglePin(String),
+    /// Join this Wi-Fi network, asking for its password if it needs one.
+    Join(crate::wifi::Network),
 }
 
 pub struct Model {
@@ -747,6 +749,27 @@ impl Model {
                         _ => Step::Nothing,
                     }
                 }
+                // Every network's payload starts with its security, so this is
+                // only ever the scan row.
+                Some(payload) if builtin == Builtin::Wifi && payload.starts_with("sh:") => {
+                    Step::RunStay(Command::Helper(payload["sh:".len()..].to_string()))
+                }
+                Some(payload) if builtin == Builtin::Wifi => {
+                    let active = items.get(index).is_some_and(|item| item.active);
+                    match crate::wifi::Network::parse(payload) {
+                        // Joining it again only drops the link for a moment.
+                        _ if active => Step::Nothing,
+                        // 802.1X wants an identity too: nmcli asks in a terminal.
+                        Some(network) if network.security == crate::wifi::Security::Enterprise => {
+                            Step::Run(Command::Dynamic {
+                                builtin,
+                                payload: network.ssid,
+                            })
+                        }
+                        Some(network) => Step::Join(network),
+                        None => Step::Nothing,
+                    }
+                }
                 Some(payload) if builtin == Builtin::Bluetooth && payload.starts_with("sh:") => {
                     Step::RunStay(Command::Helper(payload["sh:".len()..].to_string()))
                 }
@@ -1078,21 +1101,62 @@ entries = [
 
     #[test]
     fn a_network_named_like_a_setting_is_still_a_network() {
+        let network = crate::wifi::Network {
+            ssid: "screen:palette".into(),
+            security: crate::wifi::Security::Psk,
+            saved: false,
+        };
         let mut model = model();
         model.push_dynamic(
             Builtin::Wifi,
             "Network",
             vec![crate::providers::Item::new(
                 "screen:palette",
-                "screen:palette",
+                network.payload(),
             )],
         );
         assert!(!model.visible_rows()[0].submenu);
+        assert_eq!(press(&mut model, sym::RETURN), Step::Join(network));
+    }
+
+    #[test]
+    fn the_scan_row_scans_and_a_network_named_like_it_is_joined() {
+        let named = crate::wifi::Network {
+            ssid: "sh:reboot".into(),
+            security: crate::wifi::Security::Psk,
+            saved: false,
+        };
+        let mut model = model();
+        model.push_dynamic(
+            Builtin::Wifi,
+            "Network",
+            vec![
+                crate::providers::Item::new("Scan", "sh:pt35-quick wifi scan"),
+                crate::providers::Item::new("sh:reboot", named.payload()),
+            ],
+        );
+        assert_eq!(
+            press(&mut model, sym::RETURN),
+            Step::RunStay(Command::Helper("pt35-quick wifi scan".into()))
+        );
+        press(&mut model, sym::DOWN);
+        assert_eq!(press(&mut model, sym::RETURN), Step::Join(named));
+    }
+
+    #[test]
+    fn the_network_you_are_on_is_not_joined_again_and_802_1x_goes_to_a_terminal() {
+        let mut model = model();
+        let mut on = crate::providers::Item::new("Home", "psk:saved:Home");
+        on.active = true;
+        let office = crate::providers::Item::new("Office", "eap:new:Office");
+        model.push_dynamic(Builtin::Wifi, "Network", vec![on, office]);
+        assert_eq!(press(&mut model, sym::RETURN), Step::Nothing);
+        press(&mut model, sym::DOWN);
         assert_eq!(
             press(&mut model, sym::RETURN),
             Step::Run(Command::Dynamic {
                 builtin: Builtin::Wifi,
-                payload: "screen:palette".into()
+                payload: "Office".into()
             })
         );
     }

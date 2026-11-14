@@ -50,9 +50,10 @@ fn dynamic(builtin: Builtin, payload: &str) -> Plan {
             Some(id) => Plan::Ctl(vec!["window".into(), "focus".into(), id.into()]),
             None => Plan::Nothing,
         },
-        // Joining a network may need a passphrase, so it happens in a terminal
-        // the user can actually type into. The name goes in as `$1`, never
-        // into the script: anyone nearby can name a network `$(...)`.
+        // 802.1X wants an identity and a password, so nmcli asks for them in a
+        // terminal. Every other network is joined from the menu (`wifi.rs`).
+        // The name goes in as `$1`, never into the script: anyone nearby can
+        // name a network `$(...)`.
         Builtin::Wifi => in_terminal(
             "pt35-wifi",
             r#"nmcli --ask device wifi connect "$1"; read -r _"#,

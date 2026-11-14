@@ -749,28 +749,44 @@ fn wifi() -> Items {
         .map(|iface| ethernet_row(&iface))
         .into_iter()
         .collect();
-    rows.extend(
-        match run(
-            "nmcli",
-            &["-t", "-f", "ACTIVE,SIGNAL,SSID", "device", "wifi", "list"],
-        ) {
-            Some(out) => parse_nmcli(&out),
-            None => vec![Item::new("nmcli not installed", "")],
-        },
+    let scan = run(
+        "nmcli",
+        &[
+            "-t",
+            "-f",
+            "ACTIVE,SIGNAL,SECURITY,SSID",
+            "device",
+            "wifi",
+            "list",
+        ],
     );
+    let Some(out) = scan else {
+        rows.push(Item::new("nmcli not installed", ""));
+        return rows;
+    };
+    rows.push(Item {
+        label: "Scan for networks".into(),
+        payload: "sh:pt35-quick wifi scan".into(),
+        icon: "view-refresh".into(),
+        search: "scan".into(),
+        ..Item::default()
+    });
+    rows.extend(parse_nmcli(&out, &crate::wifi::saved_ssids()));
     rows
 }
 
-/// nmcli terse output: `ACTIVE:SIGNAL:SSID`, strongest first, no duplicates.
-pub fn parse_nmcli(out: &str) -> Items {
-    let mut seen: Vec<(String, i32, bool)> = Vec::new();
+/// nmcli terse output: `ACTIVE:SIGNAL:SECURITY:SSID`, strongest first, no
+/// duplicates. The payload says what joining needs (see [`crate::wifi`]).
+pub fn parse_nmcli(out: &str, saved: &[String]) -> Items {
+    let mut seen: Vec<(String, i32, bool, crate::wifi::Security)> = Vec::new();
     for line in out.lines() {
         let fields = nmcli_fields(line);
         let field = |at: usize| fields.get(at).map(String::as_str).unwrap_or("");
         let active = field(0) == "yes";
         let signal: i32 = field(1).parse().unwrap_or(0);
+        let security = crate::wifi::Security::from_nmcli(field(2));
         // Not trimmed: a leading or trailing space is part of the name you join.
-        let ssid = field(2).to_string();
+        let ssid = field(3).to_string();
         if ssid.is_empty() {
             continue;
         }
@@ -779,23 +795,32 @@ pub fn parse_nmcli(out: &str) -> Items {
                 entry.1 = entry.1.max(signal);
                 entry.2 |= active;
             }
-            None => seen.push((ssid, signal, active)),
+            None => seen.push((ssid, signal, active, security)),
         }
     }
     // The network you are on first, then by strength.
     seen.sort_by_key(|entry| (!entry.2, std::cmp::Reverse(entry.1)));
     seen.into_iter()
-        .map(|(ssid, signal, active)| Item {
-            label: ssid.clone(),
-            payload: ssid,
-            note: if active {
-                format!("connected  {signal}%")
-            } else {
-                format!("{signal}%")
-            },
-            icon: pt35_ui::icon::wifi_icon(Some(signal.clamp(0, 100) as u8)).into(),
-            active,
-            ..Item::default()
+        .map(|(ssid, signal, active, security)| {
+            let network = crate::wifi::Network {
+                saved: saved.contains(&ssid),
+                ssid,
+                security,
+            };
+            let state = match (active, network.saved) {
+                (true, _) => "connected  ",
+                (false, true) => "saved  ",
+                (false, false) => "",
+            };
+            Item {
+                label: network.ssid.clone(),
+                payload: network.payload(),
+                note: format!("{state}{signal}%"),
+                icon: pt35_ui::icon::wifi_icon(Some(signal.clamp(0, 100) as u8)).into(),
+                active,
+                search: network.ssid.clone(),
+                ..Item::default()
+            }
         })
         .collect()
 }
@@ -1473,7 +1498,7 @@ pub fn parse_pick(pick: &str) -> Option<(&str, &str, toml::Value)> {
 /// because plain C makes nmcli turn "Café" into something you cannot join.
 /// Bounded, so a radio daemon that is not running costs a screen that says
 /// nothing rather than one stuck on "Reading..." for good.
-fn run(bin: &str, args: &[&str]) -> Option<String> {
+pub(crate) fn run(bin: &str, args: &[&str]) -> Option<String> {
     pt35_common::proc::output_within(
         Command::new(bin)
             .args(args)
@@ -1535,9 +1560,10 @@ mod provider_tests {
     #[test]
     fn nmcli_escapes_are_undone_and_names_are_not_trimmed() {
         assert_eq!(nmcli_fields(r"yes:70:a\:b\\c"), ["yes", "70", r"a:b\c"]);
-        let items = parse_nmcli("no:60: Lobby \nno:50:Cafe\\: 5G\n");
-        assert_eq!(items[0].payload, " Lobby ");
-        assert_eq!(items[1].payload, "Cafe: 5G");
+        let items = parse_nmcli("no:60:WPA2: Lobby \nno:50::Cafe\\: 5G\n", &[]);
+        assert_eq!(items[0].label, " Lobby ");
+        assert_eq!(items[0].payload, "psk:new: Lobby ");
+        assert_eq!(items[1].payload, "open:new:Cafe: 5G");
     }
 
     #[test]
@@ -1590,8 +1616,8 @@ mod provider_tests {
 
     #[test]
     fn deduplicates_and_sorts_wifi_networks() {
-        let out = "no:42:Cafe\nyes:78:Home\nno:55:Home\nno:0:\n";
-        let items = parse_nmcli(out);
+        let out = "no:42:WPA2:Cafe\nyes:78:WPA2:Home\nno:55:WPA2:Home\nno:0::\n";
+        let items = parse_nmcli(out, &[]);
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].label, "Home");
         assert!(items[0].active, "the active network is marked");
@@ -1603,9 +1629,17 @@ mod provider_tests {
 
     #[test]
     fn the_network_you_are_on_comes_first_even_when_weaker() {
-        let items = parse_nmcli("no:90:Cafe\nyes:40:Home\n");
+        let items = parse_nmcli("no:90::Cafe\nyes:40::Home\n", &[]);
         assert_eq!(items[0].label, "Home");
         assert_eq!(items[1].note, "90%");
+    }
+
+    #[test]
+    fn a_saved_network_says_so_and_is_found_by_its_name() {
+        let items = parse_nmcli("no:60:WPA2:Home\nno:50:WPA2:Cafe\n", &["Home".into()]);
+        assert_eq!(items[0].payload, "psk:saved:Home");
+        assert_eq!(items[0].note, "saved  60%");
+        assert_eq!(items[1].search, "Cafe", "not psk:new:Cafe");
     }
 
     #[test]

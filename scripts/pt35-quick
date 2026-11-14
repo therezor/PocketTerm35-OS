@@ -10,6 +10,7 @@ unset LANGUAGE
 
 usage() {
   echo "usage: pt35-quick wifi|bluetooth on|off|toggle" >&2
+  echo "       pt35-quick wifi scan" >&2
   echo "       pt35-quick bluetooth scan | connect MAC | disconnect MAC" >&2
   exit 2
 }
@@ -21,6 +22,8 @@ case "$1" in
     command -v nmcli >/dev/null || { echo "nmcli is not installed" >&2; exit 1; }
     case "$2" in
       on|off) nmcli radio wifi "$2" ;;
+      # Returns at once. The menu re-reads the list while the scan runs.
+      scan) nmcli device wifi rescan ;;
       toggle)
         if [ "$(nmcli radio wifi)" = enabled ]; then
           nmcli radio wifi off
