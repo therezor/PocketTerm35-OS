@@ -89,6 +89,11 @@ else
   # A copy of an older default: move only the values still at the old default.
   sed -i -e 's/^font=DejaVu Sans Mono:size=10$/font=DejaVu Sans Mono:size=11/' \
     -e 's/^bright0=254236$/bright0=7aa48e/' "$USER_HOME/.config/foot/foot.ini"
+  # Scroll Lock is the shipped file's last block. foot takes a section twice.
+  if ! grep -q Scroll_Lock "$USER_HOME/.config/foot/foot.ini"; then
+    { printf '\n[key-bindings]\n'; sed -n '/^# Scroll Lock/,$p' "$SHARE/foot/foot.ini"; } \
+      >> "$USER_HOME/.config/foot/foot.ini"
+  fi
 fi
 
 # dialout: the keyboard's serial port, for brightness and the firmware check.
