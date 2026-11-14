@@ -36,6 +36,20 @@ export XCURSOR_THEME=Bibata-Modern-Classic
 export XCURSOR_SIZE=20
 export PT35_SHARE=/usr/share/pt35-desktop
 
+# --- GPU -------------------------------------------------------------------
+# A Pi 4 or 5 splits display and GPU: vc4 drives the panel and has no render
+# node, v3d renders. wlroots picks vc4 and tells every client to render there,
+# so GL apps and Xwayland fall back to llvmpipe (#9). Name the v3d node.
+if [ -z "${WLR_RENDER_DRM_DEVICE:-}" ]; then
+  for node in /sys/class/drm/renderD*; do
+    driver=$(readlink -f "$node/device/driver" 2>/dev/null) || continue
+    if [ "${driver##*/}" = v3d ]; then
+      export WLR_RENDER_DRM_DEVICE="/dev/dri/${node##*/}"
+      break
+    fi
+  done
+fi
+
 # --- logs ------------------------------------------------------------------
 LOG_DIR="${XDG_RUNTIME_DIR}/pt35"
 mkdir -p "$LOG_DIR"
@@ -44,7 +58,7 @@ mkdir -p "$LOG_DIR"
 # stops the next session from claiming the same name.
 for sock in "$XDG_RUNTIME_DIR"/sway-ipc.*.sock; do
   [ -e "$sock" ] || continue
-  pid=${sock##*.}; pid=${sock%.sock}; pid=${pid##*.}
+  pid=${sock%.sock}; pid=${pid##*.}
   kill -0 "$pid" 2>/dev/null || rm -f "$sock"
 done
 for sock in "$XDG_RUNTIME_DIR"/wayland-[0-9]*; do
@@ -80,7 +94,8 @@ cleanup() {
 }
 trap cleanup TERM INT EXIT
 
-sway --unsupported-gpu >"$LOG_DIR/sway.log" 2>&1
+printf 'pt35-session: render node %s\n' "${WLR_RENDER_DRM_DEVICE:-default}" >"$LOG_DIR/sway.log"
+sway >>"$LOG_DIR/sway.log" 2>&1
 status=$?
 cleanup
 

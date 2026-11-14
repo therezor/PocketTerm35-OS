@@ -96,8 +96,9 @@ exec --no-startup-id sh -c 'while swaymsg -t get_version >/dev/null 2>&1; do pt3
 # The six face buttons are bound by pt35d, not here: it drops them while the
 # menu is open. See crates/pt35d/src/modes.rs.
 
-# Start (KEY_PAUSE) is the menu and Select (KEY_SYSRQ) switches input mode.
-# Neither carries a character, so both are safe to grab while typing.
+# Start is the menu and Select the window switcher (F22 and F21 with the pt35
+# firmware, KEY_PAUSE and KEY_SYSRQ on stock). Neither carries a character,
+# so both are safe to grab while typing.
 #
 # Start is bound by pt35d, not here: a sway binding beats any surface, and the
 # menu has to see the key to know what closing means on the screen you are
